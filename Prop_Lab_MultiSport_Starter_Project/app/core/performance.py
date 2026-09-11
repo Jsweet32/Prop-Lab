@@ -1,6 +1,7 @@
 from typing import Dict, Any
 
 from app.sports.mlb.history import performance_data as mlb_performance_data
+from app.sports.nfl.history import performance_data as nfl_performance_data
 
 
 EMPTY_SUMMARY = {
@@ -45,9 +46,16 @@ def global_performance_data() -> Dict[str, Any]:
         "status": "LIVE",
     })
 
+    nfl = nfl_performance_data()
+    nfl.update({
+        "sport": "NFL",
+        "slug": "nfl",
+        "status": "LIVE",
+    })
+
     sports = [
         mlb,
-        _empty_sport("NFL", "nfl"),
+        nfl,
         _empty_sport("NBA", "nba"),
         _empty_sport("CFB", "cfb"),
     ]
