@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NFL Prop Model | Prop Lab</title>
-<link rel="icon" type="image/png" href="/static/beaker-favicon.png">
 <link rel="stylesheet" href="/static/style.css">
 <style>
 .scoreboard-wrap{padding:12px 20px 0}.scoreboard-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:7px}
@@ -193,14 +192,41 @@ async function loadScoreboard(){
   try{const r=await fetch("/api/nfl/scoreboard",{cache:"no-store"});const j=await r.json();renderScoreboard(j.games)}
   catch(e){qs("#scoreboard").innerHTML='<div class="game-card">Scoreboard unavailable.</div>'}
 }
+let nflWasRefreshing=false;
 async function pollRefresh(){
   try{
     const r=await fetch("/api/nfl/refresh-status",{cache:"no-store"}),j=await r.json();
-    if(j.running){qs("#snapshotStatus").textContent="REFRESHING"}
-    else if(j.snapshot && j.snapshot!=="{{ snapshot or '' }}"){location.reload()}
+    const pill=qs("#snapshotStatus");
+    const button=document.querySelector(".nfl-page-refresh button");
+
+    if(j.running){
+      nflWasRefreshing=true;
+      pill.textContent="REFRESHING";
+      pill.parentElement.title=j.stage||"Refreshing NFL model";
+      if(button){button.disabled=true;button.textContent="Refreshing…";}
+      return;
+    }
+
+    if(button){button.disabled=false;button.textContent="Refresh now";}
+
+    if(j.snapshot && j.snapshot!=="{{ snapshot or '' }}"){
+      location.reload();
+      return;
+    }
+
+    if(nflWasRefreshing){
+      nflWasRefreshing=false;
+      if(j.last_error){
+        pill.textContent="REFRESH FAILED";
+        pill.parentElement.title=j.last_error;
+      }else if(!j.snapshot){
+        pill.textContent="NO DATA";
+        pill.parentElement.title="Refresh finished but did not create a snapshot.";
+      }
+    }
   }catch(e){}
 }
-populateFilters();loadScoreboard();setInterval(loadScoreboard,60000);setInterval(pollRefresh,4000);
+populateFilters();loadScoreboard();pollRefresh();setInterval(loadScoreboard,60000);setInterval(pollRefresh,4000);
 </script>
 </body>
 </html>
