@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from threading import Lock, Thread
 
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -65,6 +65,24 @@ def _run_refresh_background():
         _refresh_lock.release()
 
 
+
+def start_refresh():
+    """
+    Start the MLB refresh as a server-side thread.
+
+    The thread belongs to the running Render process, not to the browser request,
+    so navigating to NFL/Home/Performance does not cancel the refresh.
+    """
+    if _refresh_state["running"]:
+        return False
+
+    Thread(
+        target=_run_refresh_background,
+        name="mlb-prop-refresh",
+        daemon=True,
+    ).start()
+    return True
+
 def _format_eastern_timestamp(value):
     if not value:
         return "No data yet"
@@ -99,9 +117,8 @@ def mlb_dashboard(request: Request):
 
 
 @router.post("/mlb/refresh")
-def refresh(background_tasks: BackgroundTasks):
-    if not _refresh_state["running"]:
-        background_tasks.add_task(_run_refresh_background)
+def refresh():
+    start_refresh()
     return RedirectResponse("/mlb?refresh=started", status_code=303)
 
 
