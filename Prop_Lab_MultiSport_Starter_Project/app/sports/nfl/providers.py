@@ -392,31 +392,84 @@ def _fetch_parlay_non_dfs(markets=None):
     return rows
 
 
+
+def _fetch_parlay_underdog(markets=None):
+    """Fallback Underdog feed when the native board is blocked from Render."""
+    if not PARLAY_API_KEY:
+        return []
+
+    rows, offset, limit = [], 0, 10000
+    while True:
+        r = requests.get(
+            f"{PARLAY_BASE}/sports/{SPORT_KEY}/props",
+            headers={"X-API-Key": PARLAY_API_KEY},
+            params={
+                "bookmakers": "underdog",
+                "markets": ",".join(markets) if markets else None,
+                "limit": limit,
+                "offset": offset,
+                "maxAgeSec": 3600,
+                "dfsOdds": "effective",
+            },
+            timeout=45,
+        )
+        if not r.ok:
+            raise RuntimeError(
+                f"ParlayAPI Underdog fallback failed ({r.status_code}): {r.text[:500]}"
+            )
+        payload = r.json()
+        batch = (
+            payload.get("data") or payload.get("props") or payload.get("results") or []
+            if isinstance(payload, dict)
+            else payload if isinstance(payload, list) else []
+        )
+        for row in batch:
+            row = dict(row)
+            row["bookmaker"] = "underdog"
+            row["bookmaker_title"] = "Underdog"
+            row["_fallback_source"] = "parlay"
+            rows.append(row)
+
+        if len(batch) < limit:
+            break
+        offset += limit
+    return rows
+
 def fetch_props(markets=None):
     """
     NFL source strategy:
-      - Underdog: native board, line_type == balanced only.
-      - PrizePicks: native board, odds_type == standard only.
+      - PrizePicks: native standard projections.
+      - Underdog: native balanced lines when available.
+      - If Render cannot reach Underdog's native endpoint, use ParlayAPI as a
+        fallback and let updater.py identify the regular rung by anchoring it to
+        PrizePicks' native STANDARD line for the same player/market.
       - Fliff/Kalshi/etc: ParlayAPI.
-
-    Accuracy wins over coverage. If a native DFS source is blocked/unavailable,
-    we omit that source for the refresh instead of falling back to Parlay rows
-    that may mix the lowest alternate ladder into the regular market.
     """
     rows = _fetch_parlay_non_dfs(markets=markets)
     diagnostics = []
 
+    # PrizePicks first because its native STANDARD line is used as the fallback
+    # anchor for Underdog if the native Underdog endpoint is blocked.
     try:
-        rows.extend(_fetch_underdog_native(markets=markets))
-    except Exception as exc:
-        diagnostics.append(f"Underdog native feed unavailable: {exc}")
-
-    try:
-        rows.extend(_fetch_prizepicks_native(markets=markets))
+        pp = _fetch_prizepicks_native(markets=markets)
+        rows.extend(pp)
     except Exception as exc:
         diagnostics.append(f"PrizePicks native feed unavailable: {exc}")
 
-    # Keep diagnostics invisible to the normal data path but available in logs.
+    try:
+        ud = _fetch_underdog_native(markets=markets)
+        if ud:
+            rows.extend(ud)
+        else:
+            diagnostics.append("Underdog native feed returned 0 rows; using Parlay fallback.")
+            rows.extend(_fetch_parlay_underdog(markets=markets))
+    except Exception as exc:
+        diagnostics.append(f"Underdog native feed unavailable: {exc}; using Parlay fallback.")
+        try:
+            rows.extend(_fetch_parlay_underdog(markets=markets))
+        except Exception as fallback_exc:
+            diagnostics.append(f"Underdog fallback unavailable: {fallback_exc}")
+
     if diagnostics:
         print(" | ".join(diagnostics))
 
