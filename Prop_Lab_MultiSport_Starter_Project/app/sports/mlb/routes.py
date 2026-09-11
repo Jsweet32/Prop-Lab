@@ -45,13 +45,10 @@ def _refresh_kalshi_background():
 
 def _run_refresh_background():
     if not _refresh_lock.acquire(blocking=False):
+        _refresh_state["running"] = False
+        _refresh_state["last_error"] = "Another MLB refresh worker already owns the refresh lock."
+        _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
         return
-
-    _refresh_state["running"] = True
-    _refresh_state["started_at"] = datetime.now(timezone.utc).isoformat()
-    _refresh_state["finished_at"] = None
-    _refresh_state["last_error"] = None
-    _refresh_state["last_result"] = None
     _refresh_state["stage"] = "Refreshing MLB props"
 
     try:
@@ -115,20 +112,16 @@ def _run_refresh_background():
 
 
 def start_refresh():
-    """
-    Start the MLB refresh as a server-side thread.
-
-    The thread belongs to the running Render process, not to the browser request,
-    so navigating to NFL/Home/Performance does not cancel the refresh.
-    """
+    """Start MLB refresh independently of the browser request."""
     if _refresh_state["running"]:
         return False
-
-    Thread(
-        target=_run_refresh_background,
-        name="mlb-prop-refresh",
-        daemon=True,
-    ).start()
+    _refresh_state["running"] = True
+    _refresh_state["started_at"] = datetime.now(timezone.utc).isoformat()
+    _refresh_state["finished_at"] = None
+    _refresh_state["last_error"] = None
+    _refresh_state["last_result"] = None
+    _refresh_state["stage"] = "Starting MLB refresh"
+    Thread(target=_run_refresh_background, name="mlb-prop-refresh", daemon=True).start()
     return True
 
 def _format_eastern_timestamp(value):
