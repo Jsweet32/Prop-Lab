@@ -201,26 +201,44 @@ def _normalize_rows(raw):
 
 def _select_main_lines(rows):
     """
-    Keep one regular/main projection per player / market / book.
+    Keep one REGULAR/main projection per player / market / book.
 
-    Native DFS rows are authoritative:
-      - PrizePicks native feed already contains odds_type=standard only.
-      - Underdog native feed already contains line_type=balanced only.
+    Native rows are authoritative:
+      - PrizePicks native feed is standard-only.
+      - Underdog native feed is balanced-only.
 
-    When Render cannot reach Underdog directly, its Parlay fallback may contain
-    the full alternate ladder. In that case use PrizePicks' native STANDARD line
-    for the same player + market as the anchor, then choose the Underdog rung
-    closest to it. This prevents 0.5/1.5 "almost guaranteed" alternate lines from
-    winning simply because they are the freshest rung.
+    If Render cannot reach Underdog natively, providers.py marks its Parlay rows
+    with _fallback_source='parlay'. Those rows may include the full alt ladder.
+    We DO NOT guess from the lowest line, newest line, or payout price.
+
+    Instead, fallback Underdog lines are allowed only when another trustworthy
+    book has the same player+market:
+      - PrizePicks native STANDARD line
+      - Fliff line
+
+    The Underdog rung closest to the median reference line is selected.
+    If no cross-book reference exists, the fallback Underdog prop is omitted
+    rather than showing an almost-guaranteed alternate line.
     """
-    # Native PrizePicks standard line lookup, normalized by player + market.
-    pp_main = {}
+    # Build trustworthy cross-book reference lines by player + market.
+    references = {}
     for r in rows:
-        if r.get("_book_title") == "PrizePicks":
-            key = (str(r.get("_player") or "").strip().lower(), r.get("_market_key"))
-            line = r.get("_line")
-            if key[0] and line is not None:
-                pp_main[key] = float(line)
+        book = r.get("_book_title")
+        if book not in {"PrizePicks", "Fliff"}:
+            continue
+        player = str(r.get("_player") or "").strip().lower()
+        market = r.get("_market_key")
+        line = r.get("_line")
+        if not player or market is None or line is None:
+            continue
+        references.setdefault((player, market), []).append(float(line))
+
+    def ref_median(player, market):
+        vals = sorted(references.get((player, market), []))
+        if not vals:
+            return None
+        n = len(vals)
+        return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2.0
 
     groups = {}
     for r in rows:
@@ -240,7 +258,7 @@ def _select_main_lines(rows):
                     snap.astimezone(timezone.utc).date().isoformat()
                     if snap else ""
                 )
-
+            # Ignore event_id for DFS. Alt ladder rungs can carry synthetic IDs.
             key = ("dfs", book, r["_player"], r["_market_key"], slate_date)
         else:
             key = (
@@ -253,7 +271,6 @@ def _select_main_lines(rows):
                 or r.get("commence_time")
                 or "",
             )
-
         groups.setdefault(key, []).append(r)
 
     selected = []
@@ -267,75 +284,67 @@ def _select_main_lines(rows):
         marked = [r for r in clean if _looks_main_marker(r)]
         candidates = marked or clean
 
-        if book == "Underdog" and len(candidates) > 1:
-            pkey = (
-                str(candidates[0].get("_player") or "").strip().lower(),
-                candidates[0].get("_market_key"),
-            )
-            anchor = pp_main.get(pkey)
+        if book == "Underdog":
+            native = [
+                r for r in candidates
+                if str(r.get("line_type") or "").lower() == "balanced"
+                and r.get("_fallback_source") != "parlay"
+            ]
+            if native:
+                # Native balanced is the real Underdog standard board line.
+                native.sort(key=_row_age_seconds)
+                selected.append(native[0])
+                continue
 
-            numeric_lines = sorted(float(r["_line"]) for r in candidates)
-            n = len(numeric_lines)
-            if n % 2:
-                ladder_mid = numeric_lines[n // 2]
-            else:
-                ladder_mid = (numeric_lines[n // 2 - 1] + numeric_lines[n // 2]) / 2.0
+            # Parlay fallback: only retain if another trusted book anchors it.
+            fallback = [
+                r for r in candidates
+                if r.get("_fallback_source") == "parlay"
+            ]
+            if not fallback:
+                continue
 
-            if anchor is not None:
-                # Standard DFS books can differ by 0.5 occasionally, so nearest
-                # line to PrizePicks is the best available fallback signal.
-                candidates.sort(
-                    key=lambda r: (
-                        abs(float(r["_line"]) - anchor),
-                        _dfs_balance_score(r),
-                        abs(float(r["_line"]) - ladder_mid),
-                        _row_age_seconds(r),
-                    )
-                )
-            else:
-                # No cross-book anchor: balanced effective pricing first, then
-                # center of the ladder. Never prefer the low extreme.
-                candidates.sort(
-                    key=lambda r: (
-                        _dfs_balance_score(r),
-                        abs(float(r["_line"]) - ladder_mid),
-                        _row_age_seconds(r),
-                    )
-                )
+            player_key = str(fallback[0].get("_player") or "").strip().lower()
+            market_key = fallback[0].get("_market_key")
+            anchor = ref_median(player_key, market_key)
 
-            selected.append(candidates[0])
+            if anchor is None:
+                # Accuracy over coverage: do not surface an unverified DFS rung.
+                continue
 
-        elif book in DFS_BOOKS and len(candidates) > 1:
-            # PrizePicks native feed should normally already be single-standard,
-            # but keep deterministic protection if duplicates exist.
-            numeric_lines = sorted(float(r["_line"]) for r in candidates)
-            n = len(numeric_lines)
-            ladder_mid = (
-                numeric_lines[n // 2]
-                if n % 2
-                else (numeric_lines[n // 2 - 1] + numeric_lines[n // 2]) / 2.0
-            )
-            candidates.sort(
+            fallback.sort(
                 key=lambda r: (
-                    abs(float(r["_line"]) - ladder_mid),
+                    abs(float(r["_line"]) - anchor),
                     _row_age_seconds(r),
                 )
             )
-            selected.append(candidates[0])
+            best = fallback[0]
 
-        else:
-            candidates.sort(
-                key=lambda r: (
-                    _row_age_seconds(r),
-                    str(
-                        r.get("last_update")
-                        or r.get("lastUpdate")
-                        or r.get("snapshot_time")
-                        or ""
-                    ),
-                )
-            )
+            # A normal DFS line should be near the standard cross-book market.
+            # If the nearest rung is still wildly different, omit it.
+            if abs(float(best["_line"]) - anchor) <= 1.0:
+                selected.append(best)
+            continue
+
+        if book in DFS_BOOKS and len(candidates) > 1:
+            # PrizePicks native input is standard-only; duplicates are usually
+            # refresh copies, so newest wins.
+            candidates.sort(key=_row_age_seconds)
             selected.append(candidates[0])
+            continue
+
+        candidates.sort(
+            key=lambda r: (
+                _row_age_seconds(r),
+                str(
+                    r.get("last_update")
+                    or r.get("lastUpdate")
+                    or r.get("snapshot_time")
+                    or ""
+                ),
+            )
+        )
+        selected.append(candidates[0])
 
     return selected
 
