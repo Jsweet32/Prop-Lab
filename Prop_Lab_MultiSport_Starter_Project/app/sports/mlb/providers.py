@@ -138,38 +138,89 @@ def _cache_set(bucket, key, value):
     _persistent_set(bucket, key, value)
     return value
 
+_MLB_MODEL_MARKETS = [
+    "player_hits",
+    "player_total_bases",
+    "player_home_runs",
+    "player_rbis",
+    "player_runs",
+    "player_walks",
+    "player_strikeouts",
+]
+
+
+def _fetch_prop_batch(markets):
+    r = requests.get(
+        f"{PARLAY_BASE}/sports/{SPORT_KEY}/props",
+        headers={"X-API-Key": PARLAY_API_KEY},
+        params={
+            "bookmakers": ",".join(BOOKMAKERS),
+            "markets": ",".join(markets),
+            "limit": 10000,
+            "maxAgeSec": 3600,
+            "dfsOdds": "effective",
+        },
+        timeout=45,
+    )
+    if not r.ok:
+        raise RuntimeError(
+            f"ParlayAPI props request failed ({r.status_code}): {r.text[:500]}"
+        )
+
+    payload = r.json()
+    if isinstance(payload, dict):
+        return payload.get("data") or payload.get("props") or payload.get("results") or []
+    if isinstance(payload, list):
+        return payload
+    return []
+
+
 def fetch_props():
+    """
+    Fetch only the MLB markets this model actually uses.
+
+    Important: ParlayAPI's documented /props endpoint supports `limit` but does
+    not document offset pagination. The previous loop kept sending `offset`
+    whenever exactly 10,000 rows were returned. If the API ignored that
+    unsupported parameter, the same 10,000-row page could be fetched repeatedly,
+    leaving the dashboard stuck in REFRESHING until the worker died/restarted.
+
+    We now make one bounded request. If it actually hits the 10,000-row ceiling,
+    retry in two smaller market batches and merge them client-side.
+    """
     if not PARLAY_API_KEY:
         raise RuntimeError("PARLAY_API_KEY is not set")
-    all_props = []
-    offset = 0
-    limit = 10000
-    while True:
-        r = requests.get(
-            f"{PARLAY_BASE}/sports/{SPORT_KEY}/props",
-            headers={"X-API-Key": PARLAY_API_KEY},
-            params={
-                "bookmakers": ",".join(BOOKMAKERS),
-                "limit": limit,
-                "offset": offset,
-                "maxAgeSec": 3600,
-            },
-            timeout=45,
-        )
-        if not r.ok:
-            raise RuntimeError(f"ParlayAPI props request failed ({r.status_code}): {r.text[:500]}")
-        payload = r.json()
-        if isinstance(payload, dict):
-            batch = payload.get("data") or payload.get("props") or payload.get("results") or []
-        elif isinstance(payload, list):
-            batch = payload
-        else:
-            batch = []
-        all_props.extend(batch)
-        if len(batch) < limit:
-            break
-        offset += limit
-    return all_props
+
+    rows = _fetch_prop_batch(_MLB_MODEL_MARKETS)
+    if len(rows) < 10000:
+        return rows
+
+    # Safety path for an unusually large slate. Split by market instead of using
+    # unsupported offset pagination.
+    midpoint = (len(_MLB_MODEL_MARKETS) + 1) // 2
+    batches = [
+        _MLB_MODEL_MARKETS[:midpoint],
+        _MLB_MODEL_MARKETS[midpoint:],
+    ]
+
+    merged = []
+    seen = set()
+    for markets in batches:
+        for row in _fetch_prop_batch(markets):
+            key = (
+                row.get("canonical_event_id") or row.get("event_id"),
+                row.get("bookmaker") or row.get("source"),
+                row.get("player") or row.get("player_name"),
+                row.get("market_key"),
+                row.get("line"),
+                row.get("last_update") or row.get("lastUpdate"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+
+    return merged
 
 
 def search_player(name):
