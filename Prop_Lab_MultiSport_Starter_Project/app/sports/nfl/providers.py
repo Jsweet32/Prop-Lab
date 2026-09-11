@@ -221,5 +221,25 @@ def game_context(home_team, away_team, commence_time=None):
     return {}
 
 def book_title(row):
-    key = str(row.get("bookmaker") or row.get("source") or "").lower()
-    return row.get("bookmaker_title") or row.get("source_title") or BOOK_TITLES.get(key) or key.title()
+    key = str(row.get("bookmaker") or row.get("source") or "").lower().strip()
+
+    # Keep DFS source names identical to the MLB board even when ParlayAPI
+    # supplies display titles such as "Underdog Fantasy".
+    if key in {"underdog", "underdog_fantasy"}:
+        return "Underdog"
+    if key in {"prizepicks", "prizepicks_mobile", "prizepicks_fantasy"}:
+        return "PrizePicks"
+    if key == "fliff":
+        return "Fliff"
+    if key == "kalshi":
+        return "Kalshi"
+
+    raw_title = row.get("bookmaker_title") or row.get("source_title")
+    if raw_title:
+        lowered = str(raw_title).lower()
+        if "underdog" in lowered:
+            return "Underdog"
+        if "prizepicks" in lowered:
+            return "PrizePicks"
+
+    return BOOK_TITLES.get(key) or raw_title or key.title()
