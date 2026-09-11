@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prop Lab</title>
+<link rel="icon" type="image/png" href="/static/beaker-favicon.png">
+<style>
+:root{--bg:#0d0f11;--panel:#14171c;--panel2:#181c22;--border:#303640;--text:#f3f4f6;--muted:#9299a5;--green:#67dc91}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.topbar{height:62px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;position:sticky;top:0;background:rgba(14,16,19,.97);z-index:20}
+.brand{font-size:17px;font-weight:900;letter-spacing:.03em;color:var(--text);text-decoration:none;margin-right:auto}
+.nav{display:flex;align-items:center;gap:7px}.nav a{color:var(--muted);text-decoration:none;font-size:11px;font-weight:800;padding:9px 11px;border-radius:8px}.nav a:hover,.nav a.active{color:var(--text);background:rgba(255,255,255,.055)}
+.global-refresh{margin-left:8px}.global-refresh button{background:#f4f4f5;color:#111317;border:0;border-radius:9px;padding:10px 14px;font-weight:850;cursor:pointer}.global-refresh button:hover{background:white}
+.shell{max-width:1280px;margin:0 auto;padding:78px 28px 70px}
+.hero{display:grid;grid-template-columns:1.2fr .9fr;gap:70px;align-items:center}
+.eyebrow,.section-eyebrow{font-size:10px;letter-spacing:.14em;color:var(--muted);font-weight:850}
+.hero h1{font-size:70px;line-height:1.03;letter-spacing:-.055em;margin:20px 0 24px;max-width:690px}
+.hero-copy{font-size:18px;line-height:1.55;color:#c5c9cf;max-width:680px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:27px}.pill{border:1px solid var(--border);border-radius:999px;padding:7px 11px;font-size:9px;letter-spacing:.06em;font-weight:800;color:#b3bac4}
+.engine{border:1px solid var(--border);border-radius:16px;background:linear-gradient(145deg,#171b21,#12151a);overflow:hidden}.engine-head{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;font-weight:850;color:#adb4be}.active{color:#bdebc9}.engine-body{padding:20px 18px}.engine-row{display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.06)}.engine-row:last-child{border-bottom:0}.num{width:28px;height:28px;border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-weight:800}.engine-row:last-child .num{border-color:#356044;color:#bceac8}.engine-main{font-size:12px;font-weight:800}.engine-sub{font-size:10px;color:var(--muted);margin-top:4px}.arrow{color:var(--muted)}
+.models{margin-top:72px}.models-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:20px}.models h2{font-size:28px;margin:12px 0 0;letter-spacing:-.03em}.models-note{font-size:12px;color:var(--muted)}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{position:relative;min-height:245px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(145deg,#15191e,#111419);padding:24px;text-decoration:none;color:var(--text);overflow:hidden}.card:hover{border-color:#4b535f}.card-top{display:flex;justify-content:space-between;align-items:center}.logo-box{height:54px;min-width:54px;padding:8px;border:1px solid var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900}.logo-box img{width:46px;height:40px;object-fit:contain;display:block}.badge{border:1px solid var(--border);border-radius:999px;padding:5px 8px;font-size:8px;letter-spacing:.08em;font-weight:850;color:var(--muted)}.badge.live{border-color:#31563c;color:#b8eac6;background:rgba(70,190,105,.05)}.card h3{font-size:24px;margin:23px 0 10px}.card p{font-size:14px;line-height:1.55;color:var(--muted);max-width:590px;margin:0}.card-foot{position:absolute;left:24px;right:24px;bottom:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px;color:#c6cbd2;font-size:10px;font-weight:750}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.hero h1{font-size:54px}.cards{grid-template-columns:1fr}.shell{padding-top:52px}}
+@media(max-width:680px){.topbar{height:auto;min-height:62px;padding:10px 14px;flex-wrap:wrap}.brand{width:100%;margin-bottom:7px}.nav{flex-wrap:wrap}.global-refresh{margin-left:0}.shell{padding-left:14px;padding-right:14px}.hero h1{font-size:45px}.models-head{align-items:flex-start;flex-direction:column;gap:8px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">PROP LAB</a>
+  <nav class="nav">
+    <a class="active" href="/">HOME</a>
+    <a href="/mlb">MLB</a>
+    <a href="/nfl">NFL</a>
+    <a href="/nba">NBA</a>
+    <a href="/cfb">CFB</a>
+    <a href="/performance">PERFORMANCE</a>
+  </nav>
+  <form class="global-refresh" method="post" action="/refresh-all">
+    <button type="submit">Refresh all</button>
+  </form>
+</header>
+
+<main class="shell">
+<section class="hero">
+  <div>
+    <div class="eyebrow">MULTI-SPORT PROP ANALYTICS</div>
+    <h1>One home for<br>every model.</h1>
+    <div class="hero-copy">Player prop dashboards built around current lines, recent performance, matchup context and model-based edges.</div>
+    <div class="pills"><span class="pill">LIVE LINES</span><span class="pill">MODEL EDGE</span><span class="pill">RECENT FORM</span><span class="pill">GAME CONTEXT</span></div>
+  </div>
+  <div class="engine">
+    <div class="engine-head"><span>PROP LAB ENGINE</span><span class="active">● &nbsp;ACTIVE</span></div>
+    <div class="engine-body">
+      <div class="engine-row"><span class="num">01</span><div><div class="engine-main">LINES</div><div class="engine-sub">Sportsbook data</div></div><span class="arrow">→</span></div>
+      <div class="engine-row"><span class="num">02</span><div><div class="engine-main">CONTEXT</div><div class="engine-sub">Recent form + matchup</div></div><span class="arrow">→</span></div>
+      <div class="engine-row"><span class="num">03</span><div><div class="engine-main">MODEL</div><div class="engine-sub">Probability + grade</div></div><span class="arrow">→</span></div>
+      <div class="engine-row"><span class="num">04</span><div><div class="engine-main">EDGE</div><div class="engine-sub">Ranked actionable props</div></div><span class="active">LIVE</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="models">
+  <div class="models-head"><div><div class="section-eyebrow">MODELS</div><h2>Choose a sport</h2></div><div class="models-note">MLB + NFL live now · more models coming next</div></div>
+  <div class="cards">
+    <a class="card" href="/mlb">
+      <div class="card-top"><div class="logo-box"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Major_League_Baseball_logo.svg" alt="MLB logo"></div><span class="badge live">● LIVE</span></div>
+      <h3>MLB</h3>
+      <p>PrizePicks, Underdog, Fliff and Kalshi with model probabilities, grades, edge, recent form, lineup context and live game awareness.</p>
+      <div class="card-foot">OPEN MLB →</div>
+    </a>
+    <a class="card" href="/nfl">
+      <div class="card-top"><div class="logo-box"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/NFL_wordmark_logo_2008.svg" alt="NFL logo"></div><span class="badge live">● LIVE</span></div>
+      <h3>NFL</h3>
+      <p>Football-specific prop modeling built around usage, recent form, prior performance, current lines and market context.</p>
+      <div class="card-foot">OPEN NFL →</div>
+    </a>
+    <a class="card" href="/nba">
+      <div class="card-top"><div class="logo-box"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/National_Basketball_Association_logo_2017-present.svg" alt="NBA logo"></div><span class="badge">COMING SOON</span></div>
+      <h3>NBA</h3>
+      <p>Basketball prop analytics will plug into the same Prop Lab model and performance system.</p>
+      <div class="card-foot">NBA COMING SOON</div>
+    </a>
+    <a class="card" href="/cfb">
+      <div class="card-top"><div class="logo-box"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/NCAA_logo.svg" alt="NCAA logo"></div><span class="badge">COMING SOON</span></div>
+      <h3>College Football</h3>
+      <p>College football modeling will use the same centralized dashboard and tracked performance framework.</p>
+      <div class="card-foot">COLLEGE FOOTBALL COMING SOON</div>
+    </a>
+  </div>
+</section>
+</main>
+</body>
+</html>
