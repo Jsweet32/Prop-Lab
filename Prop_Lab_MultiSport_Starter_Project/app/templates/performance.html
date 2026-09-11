@@ -150,11 +150,18 @@ tbody tr:first-child td{border-top:0}
       <h1>Model Performance</h1>
       <p>One place to track every sport and model. Results are based on recommendations that were saved before the games and graded from final player statistics.</p>
     </div>
-    {% if selected_sport in ["all","mlb"] %}
-    <form class="grade-form" method="post" action="/mlb/performance/grade">
-      <button type="submit">Grade completed MLB games</button>
-    </form>
-    {% endif %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if selected_sport in ["all","mlb"] %}
+      <form class="grade-form" method="post" action="/mlb/performance/grade">
+        <button type="submit">Grade completed MLB games</button>
+      </form>
+      {% endif %}
+      {% if selected_sport in ["all","nfl"] %}
+      <form class="grade-form" method="post" action="/nfl/performance/grade">
+        <button type="submit">Grade completed NFL games</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
 
   <nav class="tabs" aria-label="Performance sport filter">
