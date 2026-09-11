@@ -444,6 +444,45 @@ main{
 
 
 #refreshBanner{display:none!important}
+
+/* ===== Global refresh-complete nav alert ===== */
+.refresh-done-alert{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:16px;
+  height:16px;
+  margin-left:6px;
+  border-radius:50%;
+  background:#ffb020;
+  color:#111317;
+  font-size:11px;
+  line-height:1;
+  font-weight:950;
+  vertical-align:middle;
+  box-shadow:
+    0 0 0 1px rgba(255,176,32,.85),
+    0 0 8px rgba(255,176,32,.95),
+    0 0 16px rgba(255,176,32,.70);
+  animation:refreshDonePulse 1.35s ease-in-out infinite;
+}
+@keyframes refreshDonePulse{
+  0%,100%{
+    transform:scale(1);
+    box-shadow:
+      0 0 0 1px rgba(255,176,32,.85),
+      0 0 7px rgba(255,176,32,.85),
+      0 0 14px rgba(255,176,32,.55);
+  }
+  50%{
+    transform:scale(1.13);
+    box-shadow:
+      0 0 0 2px rgba(255,176,32,.95),
+      0 0 11px rgba(255,176,32,1),
+      0 0 22px rgba(255,176,32,.82);
+  }
+}
+
 </style>
 
 </head>
@@ -1120,5 +1159,155 @@ if(qs.get('refresh')==='started'){
 }
 pollRefresh();
 </script>
+
+<script>
+/* ===== Site-wide refresh completion watcher =====
+   If a refresh is started and the user navigates elsewhere in Prop Lab,
+   MLB/NFL gets a glowing ! in the top navigation when that refresh finishes.
+*/
+(function(){
+  const SPORTS = {
+    mlb: {statusUrl:'/api/mlb/refresh-status', href:'/mlb'},
+    nfl: {statusUrl:'/api/nfl/refresh-status', href:'/nfl'}
+  };
+
+  const key = (sport, kind) => `propLab:${sport}:${kind}`;
+
+  function numTime(value){
+    if(!value) return 0;
+    const n = Date.parse(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function arm(sport){
+    localStorage.setItem(key(sport,'requestedAt'), String(Date.now()));
+    localStorage.setItem(key(sport,'watching'), '1');
+    localStorage.removeItem(key(sport,'doneAt'));
+    renderSport(sport);
+  }
+
+  function markDone(sport, finishedAt){
+    const stamp = finishedAt || new Date().toISOString();
+    localStorage.setItem(key(sport,'doneAt'), stamp);
+    localStorage.removeItem(key(sport,'watching'));
+    localStorage.removeItem(key(sport,'requestedAt'));
+    renderSport(sport);
+  }
+
+  function clearDone(sport){
+    localStorage.removeItem(key(sport,'doneAt'));
+    renderSport(sport);
+  }
+
+  function navLinks(sport){
+    const href = SPORTS[sport].href;
+    return [...document.querySelectorAll(`a[href="${href}"]`)]
+      .filter(a => a.closest('.site-links,.nav,.navlinks'));
+  }
+
+  function renderSport(sport){
+    const show = !!localStorage.getItem(key(sport,'doneAt'));
+    navLinks(sport).forEach(a=>{
+      let badge = a.querySelector('.refresh-done-alert');
+      if(show && !badge){
+        badge = document.createElement('span');
+        badge.className = 'refresh-done-alert';
+        badge.textContent = '!';
+        badge.title = `${sport.toUpperCase()} refresh finished`;
+        badge.setAttribute('aria-label', `${sport.toUpperCase()} refresh finished`);
+        a.appendChild(badge);
+      }else if(!show && badge){
+        badge.remove();
+      }
+    });
+  }
+
+  async function checkSport(sport){
+    const cfg = SPORTS[sport];
+    try{
+      const r = await fetch(cfg.statusUrl,{cache:'no-store'});
+      if(!r.ok) return;
+      const st = await r.json();
+
+      let watching = localStorage.getItem(key(sport,'watching')) === '1';
+      const requestedAt = Number(localStorage.getItem(key(sport,'requestedAt')) || 0);
+      const startedAt = numTime(st.started_at);
+      const finishedAt = numTime(st.finished_at);
+
+      // If this page did not start the refresh but observes one running,
+      // begin watching it so navigation does not lose the completion signal.
+      if(st.running && !watching){
+        localStorage.setItem(key(sport,'watching'), '1');
+        localStorage.setItem(
+          key(sport,'requestedAt'),
+          String(startedAt || Date.now())
+        );
+        watching = true;
+      }
+
+      if(!watching) return;
+
+      if(st.running) return;
+
+      // Only count a completion that belongs to the refresh we were watching.
+      const belongsToRequest =
+        finishedAt &&
+        (!requestedAt || finishedAt >= requestedAt - 5000);
+
+      if(belongsToRequest){
+        if(!st.last_error){
+          markDone(sport, st.finished_at);
+        }else{
+          // Failed refreshes should not show the success exclamation point.
+          localStorage.removeItem(key(sport,'watching'));
+          localStorage.removeItem(key(sport,'requestedAt'));
+        }
+      }
+    }catch(e){
+      // A temporary status failure should not disturb the rest of the site.
+    }
+  }
+
+  function checkAll(){
+    checkSport('mlb');
+    checkSport('nfl');
+  }
+
+  // Arm before leaving the page so the completion can be noticed elsewhere.
+  document.addEventListener('submit', e=>{
+    const form = e.target;
+    if(!(form instanceof HTMLFormElement)) return;
+    const action = form.getAttribute('action') || '';
+    if(action === '/mlb/refresh') arm('mlb');
+    if(action === '/nfl/refresh') arm('nfl');
+    if(action === '/refresh-all'){
+      arm('mlb');
+      arm('nfl');
+    }
+  });
+
+  // Clicking the league title means the user is going to inspect that board.
+  document.addEventListener('click', e=>{
+    const link = e.target.closest('a');
+    if(!link) return;
+    if(link.getAttribute('href') === '/mlb') clearDone('mlb');
+    if(link.getAttribute('href') === '/nfl') clearDone('nfl');
+  });
+
+  // Keep multiple Prop Lab tabs in sync.
+  window.addEventListener('storage', e=>{
+    if(e.key && e.key.startsWith('propLab:')){
+      renderSport('mlb');
+      renderSport('nfl');
+    }
+  });
+
+  renderSport('mlb');
+  renderSport('nfl');
+  checkAll();
+  setInterval(checkAll, 2500);
+})();
+</script>
+
 </body>
 </html>
