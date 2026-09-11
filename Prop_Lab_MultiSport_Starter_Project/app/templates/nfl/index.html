@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NFL Prop Model | Prop Lab</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.scoreboard-wrap{padding:12px 20px 0}.scoreboard-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:7px}
+.scoreboard-head h2{margin:0;font-size:16px}.scoreboard-head span{font-size:12px;color:var(--muted)}
+.scoreboard-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.game-card{min-width:215px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 10px;flex:0 0 auto}
+.game-card.live{border-color:rgba(34,197,94,.55)}.game-card.final{opacity:.78}
+.game-status{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:5px}
+.team-line{display:grid;grid-template-columns:25px 1fr auto;align-items:center;gap:6px;min-height:31px}
+.team-logo{width:23px;height:23px;object-fit:contain}.team-name{font-weight:700;font-size:12px}
+.team-record{color:var(--muted);font-size:10px;margin-left:3px;font-weight:400}.team-score{font-size:16px;font-weight:800}
+.game-footer{font-size:10px;color:var(--muted);margin-top:4px}
+.dashboard-summary{padding:18px 20px 8px}
+.summary-panel{display:grid;grid-template-columns:minmax(310px,1.6fr) repeat(3,minmax(150px,.72fr));background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.summary-snapshot,.summary-stat{min-height:105px;padding:18px 20px;display:flex;flex-direction:column;justify-content:center}
+.summary-stat{border-left:1px solid var(--border)}.summary-eyebrow,.summary-label{font-size:14px;line-height:1.1;letter-spacing:.075em;text-transform:uppercase;font-weight:700;color:#d7d9dd;margin:0 0 10px;white-space:nowrap}
+.summary-time,.summary-number{font-size:29px;line-height:1;font-weight:400;letter-spacing:-.025em}
+.summary-time-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.snapshot-health{display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:800;padding:5px 9px;border:1px solid var(--border);border-radius:999px}
+.snapshot-dot{width:8px;height:8px;border-radius:50%;background:#22c55e}
+.book-strip{padding:10px 20px 13px;display:flex;gap:8px;flex-wrap:wrap}.book-chip{cursor:pointer;display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:7px 12px;background:rgba(255,255,255,.018)}
+.book-chip.active{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.055)}.book-chip span{font-size:10px;color:var(--muted);text-transform:uppercase}.book-chip strong{font-size:13px}
+.nfl-performance-summary{margin:3px 20px 10px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.015);display:grid;grid-template-columns:minmax(180px,1.3fr) repeat(4,minmax(95px,.72fr)) auto;overflow:hidden}
+.nfl-perf-intro,.nfl-perf-stat,.nfl-perf-link-wrap{min-height:74px;padding:13px 15px;display:flex;flex-direction:column;justify-content:center}
+.nfl-perf-stat,.nfl-perf-link-wrap{border-left:1px solid var(--border)}
+.nfl-perf-kicker,.nfl-perf-label{color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.nfl-perf-title{margin-top:5px;font-size:14px;font-weight:750}.nfl-perf-value{margin-top:7px;font-size:21px;line-height:1;font-weight:400}.nfl-perf-meta{margin-top:5px;color:var(--muted);font-size:9px}
+.nfl-perf-link{color:var(--text);text-decoration:none;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:10px;font-weight:750;white-space:nowrap}
+.filters{padding:14px 20px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.035)}
+.filters select,.filters input{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:9px 11px;font-size:12px}
+.table-wrap{padding:0 20px 30px;overflow-x:auto}table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+th{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;text-align:left;padding:10px 9px;background:rgba(255,255,255,.02);white-space:nowrap}
+td{padding:10px 9px;border-top:1px solid var(--border);font-size:11px;vertical-align:middle;white-space:nowrap}
+.player-wrap{display:flex;align-items:center;gap:10px;min-width:190px}.player-headshot{width:42px;height:42px;object-fit:contain;object-position:center bottom}.player-fallback{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:800}
+.player-name{font-weight:800}.player-sub{color:var(--muted);font-size:9px;margin-top:3px}
+.grade{display:inline-flex;min-width:26px;justify-content:center;border-radius:6px;padding:4px 6px;font-weight:900}.grade-A{background:rgba(34,197,94,.13);color:#86efac}.grade-B{background:rgba(59,130,246,.13);color:#93c5fd}.grade-C{background:rgba(245,158,11,.13);color:#fcd34d}
+.good{color:#86efac;font-weight:800}.borderline{color:#fcd34d;font-weight:800}.edge{font-weight:800}
+.empty-board{padding:30px;color:var(--muted);text-align:center}
+.site-nav{display:flex;gap:6px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+.site-brand{font-weight:900;margin-right:auto;color:var(--text);text-decoration:none}.site-link{color:var(--muted);text-decoration:none;font-size:11px;font-weight:800;padding:8px 10px;border-radius:7px}.site-link.active,.site-link:hover{color:var(--text);background:rgba(255,255,255,.045)}
+.refresh-form button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 11px;cursor:pointer;font-weight:800}
+@media(max-width:980px){.summary-panel{grid-template-columns:1fr 1fr}.summary-snapshot{grid-column:1/-1}.summary-stat:nth-child(2){border-left:0}.nfl-performance-summary{grid-template-columns:1fr 1fr 1fr}.nfl-perf-intro,.nfl-perf-link-wrap{grid-column:1/-1}.nfl-perf-link-wrap{border-left:0;border-top:1px solid var(--border)}}
+@media(max-width:650px){.site-nav{flex-wrap:wrap}.site-brand{width:100%}.dashboard-summary,.scoreboard-wrap,.table-wrap{padding-left:14px;padding-right:14px}.nfl-performance-summary{margin-left:14px;margin-right:14px;grid-template-columns:1fr 1fr}.nfl-perf-intro,.nfl-perf-link-wrap{grid-column:1/-1}.summary-panel{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav class="site-nav">
+  <a class="site-brand" href="/">PROP LAB</a>
+  <a class="site-link" href="/">HOME</a>
+  <a class="site-link" href="/mlb">MLB</a>
+  <a class="site-link active" href="/nfl">NFL</a>
+  <a class="site-link" href="/nba">NBA</a>
+  <a class="site-link" href="/cfb">CFB</a>
+  <a class="site-link" href="/performance">PERFORMANCE</a>
+  <form class="refresh-form" method="post" action="/nfl/refresh"><button type="submit">Refresh now</button></form>
+</nav>
+
+<section class="scoreboard-wrap">
+  <div class="scoreboard-head"><h2>NFL Games</h2><span id="scoreboardUpdated">Current week</span></div>
+  <div id="scoreboard" class="scoreboard-strip"><div class="game-card">Loading games…</div></div>
+</section>
+
+{% set good_rows = rows|selectattr("verdict","equalto","GOOD")|list %}
+<section class="dashboard-summary">
+  <div class="summary-panel">
+    <div class="summary-snapshot">
+      <div class="summary-eyebrow">Latest Snapshot</div>
+      <div class="summary-time-row">
+        <div id="snapshotTime" class="summary-time">{{ snapshot_display }}</div>
+        <div class="snapshot-health"><span class="snapshot-dot"></span><span id="snapshotStatus">{% if snapshot %}LIVE{% else %}NO DATA{% endif %}</span></div>
+      </div>
+    </div>
+    <div class="summary-stat"><div class="summary-label">Good Props</div><div id="goodCount" class="summary-number">{{ good_rows|length }}</div></div>
+    <div class="summary-stat"><div class="summary-label">Total Props</div><div id="totalCount" class="summary-number">{{ rows|length }}</div></div>
+    <div class="summary-stat"><div class="summary-label">A / B Props</div><div id="abCount" class="summary-number">{{ rows|selectattr("grade","in",["A","B"])|list|length }}</div></div>
+  </div>
+</section>
+
+<div class="book-strip" id="bookStrip">
+{% for book in ["PrizePicks","Underdog","Fliff","Kalshi"] %}
+  {% set br = rows|selectattr("bookmaker_title","equalto",book)|list %}
+  <button class="book-chip" type="button" data-book="{{ book }}"><span>{{ book }}</span><strong>{{ br|length }}</strong></button>
+{% endfor %}
+</div>
+
+<section class="nfl-performance-summary">
+  {% macro pct(s) -%}{% if s.hit_rate is not none %}{{ "%.1f"|format(s.hit_rate*100) }}%{% else %}—{% endif %}{%- endmacro %}
+  <div class="nfl-perf-intro"><div class="nfl-perf-kicker">TRACK RECORD</div><div class="nfl-perf-title">NFL Model Performance</div></div>
+  <div class="nfl-perf-stat"><div class="nfl-perf-label">A + B</div><div class="nfl-perf-value">{{ pct(performance.overall) }}</div><div class="nfl-perf-meta">{{ performance.overall.wins }}–{{ performance.overall.losses }}</div></div>
+  <div class="nfl-perf-stat"><div class="nfl-perf-label">A Grade</div><div class="nfl-perf-value">{{ pct(performance.grade_a) }}</div><div class="nfl-perf-meta">{{ performance.grade_a.graded }} decisions</div></div>
+  <div class="nfl-perf-stat"><div class="nfl-perf-label">B Grade</div><div class="nfl-perf-value">{{ pct(performance.grade_b) }}</div><div class="nfl-perf-meta">{{ performance.grade_b.graded }} decisions</div></div>
+  <div class="nfl-perf-stat"><div class="nfl-perf-label">Last 7D</div><div class="nfl-perf-value">{{ pct(performance.last_7) }}</div><div class="nfl-perf-meta">{{ performance.last_7.wins }}–{{ performance.last_7.losses }}</div></div>
+  <div class="nfl-perf-link-wrap"><a class="nfl-perf-link" href="/performance?sport=nfl">View full performance →</a></div>
+</section>
+
+<section class="filters">
+  <input id="searchFilter" placeholder="Search player">
+  <select id="gradeFilter"><option value="">All grades</option><option>A</option><option>B</option><option>C</option></select>
+  <select id="sideFilter"><option value="">Over + Under</option><option>OVER</option><option>UNDER</option></select>
+  <select id="marketFilter"><option value="">All markets</option></select>
+  <select id="gameFilter"><option value="">All games</option></select>
+</section>
+
+<div class="table-wrap">
+<table id="board">
+<thead><tr>
+  <th>Grade</th><th>Player</th><th>Sportsbook</th><th>Market</th><th>Pick</th><th>Model %</th><th>Edge</th><th>Season</th><th>Recent 5</th><th>Prior</th><th>Confidence</th><th>Status</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr data-book="{{ r.bookmaker_title }}" data-grade="{{ r.grade }}" data-side="{{ r.recommended_side }}" data-market="{{ r.market }}" data-game="{{ r.away_team }} @ {{ r.home_team }}" data-player="{{ r.player|lower }}">
+  <td>{% if r.grade %}<span class="grade grade-{{ r.grade }}">{{ r.grade }}</span>{% endif %}</td>
+  <td><div class="player-wrap">
+    {% if r.headshot_url %}<img class="player-headshot" src="{{ r.headshot_url }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">{% endif %}
+    <div class="player-fallback" {% if r.headshot_url %}style="display:none"{% endif %}>{{ r.player[:1] }}</div>
+    <div><div class="player-name">{{ r.player }}</div><div class="player-sub">{{ r.position or "" }}{% if r.player_team %} · {{ r.player_team }}{% endif %}</div></div>
+  </div></td>
+  <td>{{ r.bookmaker_title }}</td>
+  <td>{{ r.market }}</td>
+  <td><strong>{{ r.recommended_side }} {{ r.line }}</strong></td>
+  <td>{{ "%.1f"|format((r.recommended_prob or 0)*100) }}%</td>
+  <td class="edge">{{ "%.1f"|format((r.display_edge or 0)*100) }}% <span style="color:var(--muted);font-size:9px">{{ r.edge_type }}</span></td>
+  <td>{% if r.season_rate is not none %}{{ "%.0f"|format(r.season_rate*100) }}%{% else %}—{% endif %}</td>
+  <td>{% if r.recent5_rate is not none %}{{ "%.0f"|format(r.recent5_rate*100) }}%{% else %}—{% endif %}</td>
+  <td>{% if r.prior_rate is not none %}{{ "%.0f"|format(r.prior_rate*100) }}%{% else %}—{% endif %}</td>
+  <td>{{ "%.0f"|format((r.confidence_score or 0)*100) }}%</td>
+  <td class="{% if r.verdict=='GOOD' %}good{% elif r.verdict=='BORDERLINE' %}borderline{% endif %}">{{ r.verdict }}<div class="player-sub">{{ r.status_note }}</div></td>
+</tr>
+{% endfor %}
+{% if not rows %}<tr><td colspan="12" class="empty-board">No NFL model data yet. Click <b>Refresh now</b> once NFL props are available.</td></tr>{% endif %}
+</tbody>
+</table>
+</div>
+
+<script>
+const qs=s=>document.querySelector(s), qsa=s=>[...document.querySelectorAll(s)];
+let activeBook="";
+function populateFilters(){
+  const markets=[...new Set(qsa("#board tbody tr[data-market]").map(r=>r.dataset.market))].sort();
+  const games=[...new Set(qsa("#board tbody tr[data-game]").map(r=>r.dataset.game))].sort();
+  markets.forEach(v=>qs("#marketFilter").insertAdjacentHTML("beforeend",`<option>${v}</option>`));
+  games.forEach(v=>qs("#gameFilter").insertAdjacentHTML("beforeend",`<option>${v}</option>`));
+}
+function applyFilters(){
+  const search=qs("#searchFilter").value.toLowerCase(), grade=qs("#gradeFilter").value, side=qs("#sideFilter").value, market=qs("#marketFilter").value, game=qs("#gameFilter").value;
+  qsa("#board tbody tr[data-player]").forEach(r=>{
+    const ok=(!search||r.dataset.player.includes(search))&&(!grade||r.dataset.grade===grade)&&(!side||r.dataset.side===side)&&(!market||r.dataset.market===market)&&(!game||r.dataset.game===game)&&(!activeBook||r.dataset.book===activeBook);
+    r.style.display=ok?"":"none";
+  });
+}
+qsa(".filters input,.filters select").forEach(x=>x.addEventListener("input",applyFilters));
+qsa(".book-chip").forEach(b=>b.addEventListener("click",()=>{
+  activeBook=activeBook===b.dataset.book?"":b.dataset.book;
+  qsa(".book-chip").forEach(x=>x.classList.toggle("active",x.dataset.book===activeBook));
+  applyFilters();
+}));
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function renderScoreboard(games){
+  const el=qs("#scoreboard");
+  if(!games?.length){el.innerHTML='<div class="game-card">No current-week games found.</div>';return}
+  el.innerHTML=games.map(g=>{
+    const st=g.status==="in"?"live":g.status==="post"?"final":"scheduled";
+    const team=t=>`<div class="team-line"><img class="team-logo" src="${esc(t.logo)}"><div><span class="team-name">${esc(t.abbr||t.name)}</span> <span class="team-record">${esc(t.record||"")}</span></div><div class="team-score">${esc(t.score||"")}</div></div>`;
+    return `<div class="game-card ${st}"><div class="game-status">${esc(g.status_detail||g.status)}</div>${team(g.away||{})}${team(g.home||{})}<div class="game-footer">${g.week?"Week "+esc(g.week):""}</div></div>`;
+  }).join("");
+}
+async function loadScoreboard(){
+  try{const r=await fetch("/api/nfl/scoreboard",{cache:"no-store"});const j=await r.json();renderScoreboard(j.games)}
+  catch(e){qs("#scoreboard").innerHTML='<div class="game-card">Scoreboard unavailable.</div>'}
+}
+async function pollRefresh(){
+  try{
+    const r=await fetch("/api/nfl/refresh-status",{cache:"no-store"}),j=await r.json();
+    if(j.running){qs("#snapshotStatus").textContent="REFRESHING"}
+    else if(j.snapshot && j.snapshot!=="{{ snapshot or '' }}"){location.reload()}
+  }catch(e){}
+}
+populateFilters();loadScoreboard();setInterval(loadScoreboard,60000);setInterval(pollRefresh,4000);
+</script>
+</body>
+</html>
