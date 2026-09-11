@@ -47,6 +47,14 @@ td{padding:10px 9px;border-top:1px solid var(--border);font-size:11px;vertical-a
 .refresh-form button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 11px;cursor:pointer;font-weight:800}
 @media(max-width:980px){.summary-panel{grid-template-columns:1fr 1fr}.summary-snapshot{grid-column:1/-1}.summary-stat:nth-child(2){border-left:0}.nfl-performance-summary{grid-template-columns:1fr 1fr 1fr}.nfl-perf-intro,.nfl-perf-link-wrap{grid-column:1/-1}.nfl-perf-link-wrap{border-left:0;border-top:1px solid var(--border)}}
 @media(max-width:650px){.site-nav{flex-wrap:wrap}.site-brand{width:100%}.dashboard-summary,.scoreboard-wrap,.table-wrap{padding-left:14px;padding-right:14px}.nfl-performance-summary{margin-left:14px;margin-right:14px;grid-template-columns:1fr 1fr}.nfl-perf-intro,.nfl-perf-link-wrap{grid-column:1/-1}.summary-panel{grid-template-columns:1fr}}
+
+.nfl-page-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:27px 20px 6px}
+.nfl-page-heading h1{margin:0;font-size:31px;letter-spacing:-.03em}
+.nfl-page-heading p{margin:7px 0 0;color:var(--muted);font-size:14px}
+.nfl-page-refresh button{border:0;background:#f4f4f5;color:#111317;border-radius:9px;padding:11px 17px;font-size:13px;font-weight:850;cursor:pointer}
+.nfl-page-refresh button:hover{background:#fff}
+@media(max-width:650px){.nfl-page-heading{padding-left:14px;padding-right:14px;align-items:flex-start}.nfl-page-heading h1{font-size:27px}}
+
 </style>
 </head>
 <body>
@@ -58,8 +66,18 @@ td{padding:10px 9px;border-top:1px solid var(--border);font-size:11px;vertical-a
   <a class="site-link" href="/nba">NBA</a>
   <a class="site-link" href="/cfb">CFB</a>
   <a class="site-link" href="/performance">PERFORMANCE</a>
-  <form class="refresh-form" method="post" action="/nfl/refresh"><button type="submit">Refresh now</button></form>
 </nav>
+
+
+<section class="nfl-page-heading">
+  <div>
+    <h1>NFL Prop Board</h1>
+    <p>PrizePicks · Underdog · Fliff · Kalshi</p>
+  </div>
+  <form class="nfl-page-refresh" method="post" action="/nfl/refresh">
+    <button type="submit">Refresh now</button>
+  </form>
+</section>
 
 <section class="scoreboard-wrap">
   <div class="scoreboard-head"><h2>NFL Games</h2><span id="scoreboardUpdated">Current week</span></div>
