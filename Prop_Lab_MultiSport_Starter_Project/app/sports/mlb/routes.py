@@ -1,7 +1,4 @@
 from io import BytesIO
-import json
-import subprocess
-import sys
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from threading import Lock, Thread
@@ -20,6 +17,7 @@ from .kalshi_store import (
 )
 from .config import TIMEZONE
 from .history import performance_data, grade_pending_history
+from .updater import refresh_fast
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -44,63 +42,34 @@ def _refresh_kalshi_background():
 
 
 def _run_refresh_background():
+    """
+    Run MLB refresh in the Render web process, but on its own daemon thread.
+
+    This survives browser navigation because it is not tied to the HTTP request.
+    The previous subprocess wrapper could exit/fail before writing the new Neon
+    snapshot, which is why the page returned to the prior stale snapshot.
+    """
     if not _refresh_lock.acquire(blocking=False):
         _refresh_state["running"] = False
         _refresh_state["last_error"] = "Another MLB refresh worker already owns the refresh lock."
         _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
         return
-    _refresh_state["stage"] = "Refreshing MLB props"
 
     try:
-        # Run the expensive refresh in its own Python process.
-        #
-        # This has two benefits:
-        # 1) page navigation cannot affect the job;
-        # 2) a genuinely hung refresh can be force-stopped by the timeout instead
-        #    of leaving the website stuck on REFRESHING forever.
-        code = (
-            "import json; "
-            "from app.sports.mlb.updater import refresh_fast; "
-            "result=refresh_fast(); "
-            "print(json.dumps(result, default=str))"
-        )
-        completed = subprocess.run(
-            [sys.executable, "-c", code],
-            capture_output=True,
-            text=True,
-            timeout=360,
-            check=False,
-        )
-
-        if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout or "").strip()
-            detail = detail[-1800:] if detail else "MLB refresh process exited with an error."
-            raise RuntimeError(detail)
-
-        output = (completed.stdout or "").strip().splitlines()
-        result = None
-        if output:
-            try:
-                result = json.loads(output[-1])
-            except Exception:
-                result = {"message": output[-1]}
+        _refresh_state["stage"] = "Fetching latest MLB lines"
+        result = refresh_fast()
 
         _refresh_state["last_result"] = result or {"status": "complete"}
+        _refresh_state["last_error"] = None
         _refresh_state["stage"] = "Complete"
 
-        # Kalshi can update independently after the main board snapshot is ready.
+        # Kalshi is independent; don't make its refresh block the main snapshot.
         Thread(
             target=_refresh_kalshi_background,
             name="mlb-kalshi-refresh",
             daemon=True,
         ).start()
 
-    except subprocess.TimeoutExpired:
-        _refresh_state["last_error"] = (
-            "MLB refresh exceeded 6 minutes and was stopped. "
-            "The previous snapshot was preserved."
-        )
-        _refresh_state["stage"] = "Timed out"
     except Exception as exc:
         _refresh_state["last_error"] = str(exc)
         _refresh_state["stage"] = "Failed"
