@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+import json
+import subprocess
+import sys
 from threading import Lock, Thread
 from zoneinfo import ZoneInfo
 
@@ -10,7 +13,6 @@ from .config import TIMEZONE
 from .db import latest_rows, latest_snapshot
 from .history import performance_data, grade_pending
 from .providers import fetch_scoreboard
-from .updater import refresh_all
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -40,14 +42,51 @@ def _format_eastern_timestamp(value):
 def _refresh_background():
     if not _refresh_lock.acquire(blocking=False):
         return
+
     _refresh_state["running"] = True
     _refresh_state["started_at"] = datetime.now(timezone.utc).isoformat()
+    _refresh_state["finished_at"] = None
     _refresh_state["last_error"] = None
-    _refresh_state["stage"] = "Loading NFL lines + player history"
+    _refresh_state["last_result"] = None
+    _refresh_state["stage"] = "Refreshing NFL props"
+
     try:
-        count = refresh_all()
-        _refresh_state["last_result"] = {"props": count}
+        code = (
+            "import json; "
+            "from app.sports.nfl.updater import refresh_all; "
+            "result=refresh_all(); "
+            "print(json.dumps({'props': result}, default=str))"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=360,
+            check=False,
+        )
+
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            detail = detail[-1800:] if detail else "NFL refresh process exited with an error."
+            raise RuntimeError(detail)
+
+        output = (completed.stdout or "").strip().splitlines()
+        result = None
+        if output:
+            try:
+                result = json.loads(output[-1])
+            except Exception:
+                result = {"message": output[-1]}
+
+        _refresh_state["last_result"] = result or {"status": "complete"}
         _refresh_state["stage"] = "Complete"
+
+    except subprocess.TimeoutExpired:
+        _refresh_state["last_error"] = (
+            "NFL refresh exceeded 6 minutes and was stopped. "
+            "The previous snapshot was preserved."
+        )
+        _refresh_state["stage"] = "Timed out"
     except Exception as exc:
         _refresh_state["last_error"] = str(exc)
         _refresh_state["stage"] = "Failed"
@@ -55,6 +94,7 @@ def _refresh_background():
         _refresh_state["running"] = False
         _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
         _refresh_lock.release()
+
 
 
 def start_refresh():
