@@ -11,6 +11,9 @@ from .sports.mlb.db import init_db as init_mlb_db
 from .sports.mlb.kalshi_store import init_kalshi_db
 from .sports.mlb.history import init_history_db
 from .sports.mlb.scheduler import start_scheduler as start_mlb_scheduler
+from .sports.nfl.db import init_db as init_nfl_db
+from .sports.nfl.history import init_history_db as init_nfl_history_db
+from .sports.nfl.scheduler import start_scheduler as start_nfl_scheduler
 from .core.performance import global_performance_data
 
 app = FastAPI(
@@ -27,15 +30,19 @@ app.include_router(nba_router)
 app.include_router(cfb_router)
 
 _mlb_scheduler = None
+_nfl_scheduler = None
 
 
 @app.on_event("startup")
 def startup():
-    global _mlb_scheduler
+    global _mlb_scheduler, _nfl_scheduler
     init_mlb_db()
     init_kalshi_db()
     init_history_db()
     _mlb_scheduler = start_mlb_scheduler()
+    init_nfl_db()
+    init_nfl_history_db()
+    _nfl_scheduler = start_nfl_scheduler()
 
 
 @app.get("/", response_class=HTMLResponse)
