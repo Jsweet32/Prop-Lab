@@ -129,6 +129,43 @@ def _looks_main_marker(row):
             return True
     return False
 
+
+def _row_age_seconds(row):
+    """
+    Return the source observation age. Smaller = newer/current.
+
+    ParlayAPI normally supplies age_seconds. The fallbacks handle older payload
+    variants that used ISO or epoch-millisecond timestamps.
+    """
+    for key in ("age_seconds", "ageSeconds", "age"):
+        value = row.get(key)
+        if value is not None:
+            try:
+                return max(0.0, float(value))
+            except Exception:
+                pass
+
+    value = row.get("last_update") or row.get("lastUpdate") or row.get("snapshot_time")
+    if value is None:
+        return float("inf")
+
+    try:
+        numeric = float(value)
+        # API last_update may be epoch milliseconds.
+        if numeric > 10_000_000_000:
+            numeric /= 1000.0
+        return max(0.0, datetime.now(timezone.utc).timestamp() - numeric)
+    except Exception:
+        pass
+
+    parsed = _dt(value)
+    if parsed:
+        return max(
+            0.0,
+            (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds(),
+        )
+    return float("inf")
+
 def _normalize_rows(raw):
     rows = []
     now = datetime.now(timezone.utc)
@@ -164,62 +201,56 @@ def _normalize_rows(raw):
 
 def _select_main_lines(rows):
     """
-    Keep exactly one true/main projection per player/market/game/book.
+    Keep the CURRENT standard line for each player / market / game / book.
 
-    For DFS apps, simply choosing the middle numeric line is unsafe because
-    Underdog/PrizePicks may publish ladders around the projection. Prefer a row
-    explicitly marked main/standard; otherwise choose the line whose effective
-    higher/lower pricing is closest to a fair 50/50 split.
+    Important: /props can expose more than one line series for the same
+    player/book/market after a projection moves. The correct board line is the
+    newest observation, not the median numeric line and not the line with the
+    most balanced effective DFS price.
+
+    Alternate market keys are already excluded before this step.
     """
     groups = {}
     for r in rows:
         key = (
-            r["_book_title"], r["_player"], r["_market_key"],
-            r.get("event_id") or r.get("commence_time") or "",
+            r["_book_title"],
+            r["_player"],
+            r["_market_key"],
+            r.get("canonical_event_id")
+            or r.get("event_id")
+            or r.get("commence_time")
+            or "",
         )
         groups.setdefault(key, []).append(r)
 
-    out = []
+    selected = []
     for group in groups.values():
-        # Safety net in case a source-specific alternate marker slipped through.
         clean = [r for r in group if not _is_explicit_alternate(r)]
         if not clean:
             continue
 
-        book = clean[0]["_book_title"]
+        # Prefer an explicit main/standard marker when the source supplies one.
+        marked = [r for r in clean if _looks_main_marker(r)]
+        candidates = marked or clean
 
-        explicitly_main = [r for r in clean if _looks_main_marker(r)]
-        candidates = explicitly_main or clean
-
-        if book in DFS_BOOKS and len(candidates) > 1:
-            # Main DFS projection should have the most balanced effective
-            # higher/lower price. Use distance from the group's median line only
-            # as a deterministic tie-breaker.
-            numeric_lines = sorted(r["_line"] for r in candidates)
-            mid = numeric_lines[len(numeric_lines) // 2]
-            candidates.sort(
-                key=lambda r: (
-                    _dfs_balance_score(r),
-                    abs(r["_line"] - mid),
-                    r["_line"],
-                )
-            )
-            out.append(candidates[0])
-        else:
-            # Sportsbooks normally identify alternates via the market key.
-            # If duplicates remain, choose the most recently updated row.
-            candidates.sort(
-                key=lambda r: str(
+        # The current sportsbook/DFS projection is the freshest line series.
+        # If two rows have the same write age, use the balanced-price score only
+        # as a tie-breaker (never as the primary selector).
+        candidates.sort(
+            key=lambda r: (
+                _row_age_seconds(r),
+                _dfs_balance_score(r) if r["_book_title"] in DFS_BOOKS else 0.0,
+                str(
                     r.get("last_update")
                     or r.get("lastUpdate")
                     or r.get("snapshot_time")
                     or ""
                 ),
-                reverse=True,
             )
-            out.append(candidates[0])
+        )
+        selected.append(candidates[0])
 
-    return out
+    return selected
 
 def _consensus_lines(rows):
     groups = {}
@@ -239,7 +270,7 @@ def _implied(row, side):
     return american_implied(row.get(f"{side.lower()}_price"))
 
 def refresh_all():
-    raw = fetch_props()
+    raw = fetch_props(markets=list(SUPPORTED.keys()))
     if not raw:
         raise RuntimeError("ParlayAPI returned no NFL props.")
 
