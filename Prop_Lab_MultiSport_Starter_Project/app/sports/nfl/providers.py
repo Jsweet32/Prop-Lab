@@ -48,7 +48,7 @@ def nfl_season(now=None):
     # January/February games belong to the season that started the prior fall.
     return now.year if now.month >= 3 else now.year - 1
 
-def fetch_props():
+def fetch_props(markets=None):
     if not PARLAY_API_KEY:
         raise RuntimeError("PARLAY_API_KEY is not set")
     rows, offset, limit = [], 0, 10000
@@ -58,6 +58,7 @@ def fetch_props():
             headers={"X-API-Key": PARLAY_API_KEY},
             params={
                 "bookmakers": ",".join(BOOKMAKERS),
+                "markets": ",".join(markets) if markets else None,
                 "limit": limit,
                 "offset": offset,
                 "maxAgeSec": 3600,
