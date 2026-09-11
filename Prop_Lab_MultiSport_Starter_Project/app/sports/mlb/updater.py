@@ -3,14 +3,7 @@ from zoneinfo import ZoneInfo
 from statistics import median
 import json
 
-from .providers import (
-    fetch_props,
-    search_player,
-    fetch_game_log,
-    get_player_context,
-    fetch_mlb_scoreboard,
-    _cache_warm,
-)
+from .providers import fetch_props, search_player, fetch_game_log, get_player_context, fetch_mlb_scoreboard
 from .model import (
     SUPPORTED, canonical_market_key, american_implied, rates_from_game_log,
     weighted_probability, dfs_model_edge, sportsbook_grade
@@ -490,24 +483,24 @@ def refresh_all(fast=False):
 
     props = fliff_kalshi_rows + prizepicks_main + underdog_main
 
+    # Group by player + model group so only one full season game-log payload
+    # needs to be resident at a time.
+    props.sort(
+        key=lambda p: (
+            " ".join(str(p.get("player") or "").lower().split()),
+            (SUPPORTED.get(p.get("_model_key")) or ("",))[0],
+            str(p.get("_model_key") or ""),
+            float(p.get("line")) if p.get("line") is not None else 0.0,
+        )
+    )
+
     now = datetime.now(timezone.utc)
     snapshot = now.isoformat()
     season = now.year
-    people, logs, contexts = {}, {}, {}
+    people, contexts = {}, {}
 
-    # Warm persistent MLB API cache in bulk. Previously, cache misses/hits could
-    # each open their own Neon connection. One warm-up per bucket is much faster
-    # on Render, especially after a process restart.
-    if fast:
-        try:
-            player_keys = {
-                " ".join(str(p.get("player") or "").lower().replace(".", "").split())
-                for p in props
-                if p.get("player")
-            }
-            _cache_warm("player_search", player_keys, PLAYER_SEARCH_CACHE_SECONDS)
-        except Exception:
-            pass
+    current_log_key = None
+    current_log_data = []
 
     # Manual refresh is line-first: reuse the latest fully modeled result when
     # the player/market/line/matchup has not changed. This avoids hundreds of
@@ -527,22 +520,6 @@ def refresh_all(fast=False):
                 prior_by_exact[exact_key] = old
         except Exception:
             prior_by_exact = {}
-
-    if fast:
-        # Use player IDs already stored on the previous board to warm only the
-        # game logs that may actually be needed. This avoids serial Neon reads
-        # during the modeling loop.
-        try:
-            log_keys = set()
-            for old in latest_rows():
-                pid = old.get("mlb_player_id")
-                market_key = old.get("market_key")
-                market_def = SUPPORTED.get(market_key)
-                if pid and market_def:
-                    log_keys.add((int(pid), int(season), str(market_def[0])))
-            _cache_warm("game_log", log_keys, GAME_LOG_CACHE_SECONDS)
-        except Exception:
-            pass
 
     if fast:
         statcast = {}
@@ -628,16 +605,21 @@ def refresh_all(fast=False):
             group = market_def[0]
             stat_key = market_def[1]
             ck = (mlb_id, group)
-            if ck not in logs:
-                try:
-                    logs[ck] = fetch_game_log(mlb_id, season, group)
-                except Exception:
-                    logs[ck] = []
 
-            if not logs[ck]:
+            # Keep just one player's batting/pitching game log in memory at once.
+            # Because props are sorted by player + group above, this still reuses
+            # the same payload for all of that player's markets/lines.
+            if current_log_key != ck:
+                try:
+                    current_log_data = fetch_game_log(mlb_id, season, group)
+                except Exception:
+                    current_log_data = []
+                current_log_key = ck
+
+            if not current_log_data:
                 note = "No MLB game-log data"
             else:
-                rates = rates_from_game_log(logs[ck], stat_key, line)
+                rates = rates_from_game_log(current_log_data, stat_key, line)
                 base = weighted_probability(rates)
                 model_over = base
 
