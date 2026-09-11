@@ -10,6 +10,7 @@ from .model import (
 )
 from .statcast import fetch_statcast_leaderboard
 from .db import replace_snapshot, latest_rows, latest_snapshot
+from .history import capture_actionable_props
 from .config import *
 
 _LOCAL_DFS_SIDE_POLICIES = {
@@ -559,6 +560,7 @@ def refresh_all(fast=False):
                 "opponent": prior.get("opponent"),
                 "probable_pitcher": prior.get("probable_pitcher"),
                 "venue": prior.get("venue"),
+                "game_pk": prior.get("game_pk"),
                 "lineup_status": prior.get("lineup_status"),
                 "is_probable_starter": prior.get("lineup_status") == "PROBABLE_STARTER",
             }
@@ -713,6 +715,7 @@ def refresh_all(fast=False):
             "home_team": p.get("home_team"),
             "away_team": p.get("away_team"),
             "commence_time": p.get("commence_time") or p.get("commenceTime"),
+            "game_pk": ctx.get("game_pk"),
             "model_prob_over": model_over,
             "model_prob_under": model_under,
             "base_prob_over": base,
@@ -751,6 +754,14 @@ def refresh_all(fast=False):
         raise RuntimeError("Refresh produced zero usable prop rows; previous snapshot preserved.")
 
     replace_snapshot(rows, snapshot)
+
+    # Freeze A/B GOOD + PROVISIONAL recommendations for honest post-game tracking.
+    # History failure must never break the live prop board.
+    try:
+        capture_actionable_props(rows, snapshot)
+    except Exception:
+        pass
+
     return {
         "snapshot_time": snapshot,
         "rows": len(rows),
