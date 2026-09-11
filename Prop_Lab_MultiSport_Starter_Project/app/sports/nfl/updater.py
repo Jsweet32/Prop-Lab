@@ -220,8 +220,10 @@ def _select_main_lines(rows):
     If no cross-book reference exists, the fallback Underdog prop is omitted
     rather than showing an almost-guaranteed alternate line.
     """
-    # Build trustworthy cross-book reference lines by player + market.
-    references = {}
+    # PrizePicks native STANDARD is our best cross-book main-line anchor.
+    # Keep Fliff separate because sportsbook feeds can contain alternate ladders.
+    pp_references = {}
+    fliff_references = {}
     for r in rows:
         book = r.get("_book_title")
         if book not in {"PrizePicks", "Fliff"}:
@@ -231,14 +233,21 @@ def _select_main_lines(rows):
         line = r.get("_line")
         if not player or market is None or line is None:
             continue
-        references.setdefault((player, market), []).append(float(line))
+        target = pp_references if book == "PrizePicks" else fliff_references
+        target.setdefault((player, market), []).append(float(line))
 
-    def ref_median(player, market):
-        vals = sorted(references.get((player, market), []))
+    def _median(values):
+        vals = sorted(values or [])
         if not vals:
             return None
         n = len(vals)
         return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2.0
+
+    def pp_anchor(player, market):
+        return _median(pp_references.get((player, market), []))
+
+    def fliff_anchor(player, market):
+        return _median(fliff_references.get((player, market), []))
 
     groups = {}
     for r in rows:
@@ -285,20 +294,92 @@ def _select_main_lines(rows):
         candidates = marked or clean
 
         if book == "Underdog":
-            # Hard safety gate: the only authoritative main-line marker we have
-            # is Underdog's own native `line_type=balanced`. Flash/discount rows
-            # and all flattened Parlay fallback rows are excluded.
+            # Native Underdog is authoritative when available.
             native = [
                 r for r in candidates
                 if str(r.get("line_type") or "").lower() == "balanced"
                 and r.get("_fallback_source") != "parlay"
                 and r.get("flash_line") in (None, "", False)
             ]
-            if not native:
+            if native:
+                native.sort(key=_row_age_seconds)
+                selected.append(native[0])
                 continue
 
-            native.sort(key=_row_age_seconds)
-            selected.append(native[0])
+            # Render commonly cannot reach Underdog's native feed, so use the
+            # ParlayAPI fallback. It can contain the entire ladder; never select
+            # merely by freshness or by the smallest line.
+            fallback = [
+                r for r in candidates
+                if r.get("_fallback_source") == "parlay"
+            ]
+            if not fallback:
+                continue
+
+            # Deduplicate exact line rungs, keeping the freshest observation.
+            by_line = {}
+            for r in fallback:
+                ln = float(r["_line"])
+                prior = by_line.get(ln)
+                if prior is None or _row_age_seconds(r) < _row_age_seconds(prior):
+                    by_line[ln] = r
+            fallback = list(by_line.values())
+
+            player_key = str(fallback[0].get("_player") or "").strip().lower()
+            market_key = fallback[0].get("_market_key")
+
+            # Signal #1 (strongest): PrizePicks native STANDARD for same player/stat.
+            anchor = pp_anchor(player_key, market_key)
+
+            if anchor is not None:
+                fallback.sort(
+                    key=lambda r: (
+                        abs(float(r["_line"]) - anchor),
+                        _dfs_balance_score(r),
+                        _row_age_seconds(r),
+                    )
+                )
+                best = fallback[0]
+
+                # Guard against a mismatched market/name. NFL main lines between
+                # DFS books can differ, but not by an absurd amount.
+                tolerance = max(1.0, abs(anchor) * 0.20)
+                if abs(float(best["_line"]) - anchor) <= tolerance:
+                    selected.append(best)
+                continue
+
+            # Signal #2: Underdog's own effective Higher/Lower prices.
+            # A regular line is designed to be roughly balanced; discounted /
+            # alternate rungs are intentionally skewed. Only trust a clearly
+            # balanced row when PrizePicks does not offer the same player/stat.
+            priced = [
+                r for r in fallback
+                if _american_implied_local(r.get("over_price")) is not None
+                and _american_implied_local(r.get("under_price")) is not None
+            ]
+            if priced:
+                priced.sort(
+                    key=lambda r: (
+                        _dfs_balance_score(r),
+                        _row_age_seconds(r),
+                    )
+                )
+                best = priced[0]
+                if _dfs_balance_score(best) <= 0.08:
+                    selected.append(best)
+                    continue
+
+            # Signal #3 (weakest): only use Fliff when there is exactly one
+            # plausible nearby Underdog rung. This avoids letting a Fliff alt
+            # ladder drag Underdog toward an extreme 0.5/1.5 line.
+            f_anchor = fliff_anchor(player_key, market_key)
+            if f_anchor is not None:
+                nearby = [
+                    r for r in fallback
+                    if abs(float(r["_line"]) - f_anchor) <= max(1.0, abs(f_anchor) * 0.15)
+                ]
+                if len(nearby) == 1:
+                    selected.append(nearby[0])
             continue
 
         if book in DFS_BOOKS and len(candidates) > 1:
