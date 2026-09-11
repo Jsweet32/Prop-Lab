@@ -115,26 +115,42 @@ def _persistent_set(bucket, key, value):
     except Exception:
         pass
 
+_LARGE_CACHE_BUCKETS = {"game_log", "game_feed"}
+
+
 def _cache_get(bucket, key, ttl):
+    """
+    Keep small metadata in process RAM, but never retain full game logs/live
+    feeds there. On a 512 MB Render instance, dozens/hundreds of season game-log
+    payloads can exhaust the worker. Large payloads stay in Neon instead.
+    """
     now = time.time()
-    with _mlb_cache_lock:
-        item = _mlb_cache[bucket].get(key)
-        if item:
-            created, value = item
-            if now - created <= ttl:
-                return value
-            _mlb_cache[bucket].pop(key, None)
+
+    if bucket not in _LARGE_CACHE_BUCKETS:
+        with _mlb_cache_lock:
+            item = _mlb_cache[bucket].get(key)
+            if item:
+                created, value = item
+                if now - created <= ttl:
+                    return deepcopy(value)
+                _mlb_cache[bucket].pop(key, None)
 
     value = _persistent_get(bucket, key, ttl)
     if value is not None:
-        with _mlb_cache_lock:
-            _mlb_cache[bucket][key] = (now, value)
+        if bucket not in _LARGE_CACHE_BUCKETS:
+            with _mlb_cache_lock:
+                _mlb_cache[bucket][key] = (now, deepcopy(value))
+            return deepcopy(value)
         return value
+
     return None
 
+
 def _cache_set(bucket, key, value):
-    with _mlb_cache_lock:
-        _mlb_cache[bucket][key] = (time.time(), value)
+    if bucket not in _LARGE_CACHE_BUCKETS:
+        with _mlb_cache_lock:
+            _mlb_cache[bucket][key] = (time.time(), deepcopy(value))
+
     _persistent_set(bucket, key, value)
     return value
 
@@ -175,74 +191,13 @@ def _fetch_prop_batch(markets):
     return []
 
 
-def _cache_warm(bucket, items, ttl):
-    """
-    Prime the in-process cache for a set of keys from persistent storage using
-    one Postgres connection. This is used by the manual MLB refresh so we do not
-    open a new Neon connection for every player/game-log lookup.
-    """
-    if not items or not DATABASE_URL:
-        return
-
-    _ensure_persistent_cache()
-    if not _persistent_cache_ready:
-        return
-
-    missing = []
-    now = time.time()
-    with _mlb_cache_lock:
-        for key in items:
-            current = _mlb_cache[bucket].get(key)
-            if current and now - current[0] <= ttl:
-                continue
-            missing.append(key)
-
-    if not missing:
-        return
-
-    try:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        cache_keys = [_cache_key(k) for k in missing]
-        placeholders = ",".join(["%s"] * len(cache_keys))
-        sql = (
-            "SELECT cache_key,created_at,payload FROM mlb_api_cache "
-            f"WHERE bucket=%s AND cache_key IN ({placeholders})"
-        )
-
-        with psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10) as c:
-            rows = c.execute(sql, (bucket, *cache_keys)).fetchall()
-
-        key_by_serialized = {_cache_key(k): k for k in missing}
-        with _mlb_cache_lock:
-            for row in rows:
-                if now - float(row["created_at"]) > ttl:
-                    continue
-                original_key = key_by_serialized.get(row["cache_key"])
-                if original_key is None:
-                    continue
-                try:
-                    value = json.loads(row["payload"])
-                except Exception:
-                    continue
-                _mlb_cache[bucket][original_key] = (now, value)
-    except Exception:
-        return
-
-
 def fetch_props():
     """
-    Fetch only the MLB markets this model actually uses.
+    Fetch only markets the MLB model actually uses.
 
-    Important: ParlayAPI's documented /props endpoint supports `limit` but does
-    not document offset pagination. The previous loop kept sending `offset`
-    whenever exactly 10,000 rows were returned. If the API ignored that
-    unsupported parameter, the same 10,000-row page could be fetched repeatedly,
-    leaving the dashboard stuck in REFRESHING until the worker died/restarted.
-
-    We now make one bounded request. If it actually hits the 10,000-row ceiling,
-    retry in two smaller market batches and merge them client-side.
+    Avoid offset pagination here. A bounded request prevents the refresh from
+    repeatedly accumulating a 10,000-row page in RAM if the upstream endpoint
+    ignores an offset parameter.
     """
     if not PARLAY_API_KEY:
         raise RuntimeError("PARLAY_API_KEY is not set")
@@ -251,8 +206,8 @@ def fetch_props():
     if len(rows) < 10000:
         return rows
 
-    # Safety path for an unusually large slate. Split by market instead of using
-    # unsupported offset pagination.
+    # If the full request hits the cap, split by market instead of accumulating
+    # pages in one unbounded list.
     midpoint = (len(_MLB_MODEL_MARKETS) + 1) // 2
     batches = [
         _MLB_MODEL_MARKETS[:midpoint],
