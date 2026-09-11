@@ -201,54 +201,114 @@ def _normalize_rows(raw):
 
 def _select_main_lines(rows):
     """
-    Keep the CURRENT standard line for each player / market / game / book.
+    Keep exactly one REGULAR/main projection per player / market / book.
 
-    Important: /props can expose more than one line series for the same
-    player/book/market after a projection moves. The correct board line is the
-    newest observation, not the median numeric line and not the line with the
-    most balanced effective DFS price.
+    DFS apps are special: alternate ladder rows can carry different synthetic
+    event ids even though they belong to the same player/market on the same
+    slate. Grouping by event_id therefore fails to compare the alternate ladder
+    and can accidentally keep every low "almost guaranteed" line.
 
-    Alternate market keys are already excluded before this step.
+    For PrizePicks/Underdog we group by book + player + market + game date,
+    deliberately ignoring event_id. Then:
+      1) remove rows explicitly marked alternate/special,
+      2) prefer rows explicitly marked main/standard,
+      3) choose the line whose Higher/Lower effective pricing is closest to a
+         balanced 50/50 projection,
+      4) use the middle numeric line as a tie-breaker, NOT the lowest line.
+
+    Standard sportsbooks keep the event-aware grouping because their event ids
+    are stable and alternates are represented by separate alternate market keys.
     """
     groups = {}
+
     for r in rows:
-        key = (
-            r["_book_title"],
-            r["_player"],
-            r["_market_key"],
-            r.get("canonical_event_id")
-            or r.get("event_id")
-            or r.get("commence_time")
-            or "",
-        )
+        book = r["_book_title"]
+
+        if book in DFS_BOOKS:
+            commence = _dt(r.get("commence_time"))
+            if commence:
+                slate_date = commence.astimezone(timezone.utc).date().isoformat()
+            else:
+                # Player-keyed DFS rows can be teamless; snapshot date is a
+                # safer grouping fallback than event_id for alternate ladders.
+                snap = _dt(
+                    r.get("snapshot_time")
+                    or r.get("last_update")
+                    or r.get("lastUpdate")
+                )
+                slate_date = (
+                    snap.astimezone(timezone.utc).date().isoformat()
+                    if snap else ""
+                )
+
+            key = (
+                "dfs",
+                book,
+                r["_player"],
+                r["_market_key"],
+                slate_date,
+            )
+        else:
+            key = (
+                "book",
+                book,
+                r["_player"],
+                r["_market_key"],
+                r.get("canonical_event_id")
+                or r.get("event_id")
+                or r.get("commence_time")
+                or "",
+            )
+
         groups.setdefault(key, []).append(r)
 
     selected = []
+
     for group in groups.values():
         clean = [r for r in group if not _is_explicit_alternate(r)]
         if not clean:
             continue
 
-        # Prefer an explicit main/standard marker when the source supplies one.
+        book = clean[0]["_book_title"]
         marked = [r for r in clean if _looks_main_marker(r)]
         candidates = marked or clean
 
-        # The current sportsbook/DFS projection is the freshest line series.
-        # If two rows have the same write age, use the balanced-price score only
-        # as a tie-breaker (never as the primary selector).
-        candidates.sort(
-            key=lambda r: (
-                _row_age_seconds(r),
-                _dfs_balance_score(r) if r["_book_title"] in DFS_BOOKS else 0.0,
-                str(
-                    r.get("last_update")
-                    or r.get("lastUpdate")
-                    or r.get("snapshot_time")
-                    or ""
-                ),
+        if book in DFS_BOOKS and len(candidates) > 1:
+            numeric_lines = sorted(r["_line"] for r in candidates)
+            # True midpoint of the ladder; important for even-sized groups too.
+            n = len(numeric_lines)
+            if n % 2:
+                ladder_mid = numeric_lines[n // 2]
+            else:
+                ladder_mid = (numeric_lines[n // 2 - 1] + numeric_lines[n // 2]) / 2.0
+
+            candidates.sort(
+                key=lambda r: (
+                    # Primary signal: regular DFS line is the balanced Higher /
+                    # Lower projection, while alt ladders skew the effective price.
+                    _dfs_balance_score(r),
+                    # If pricing is unavailable/equally balanced, never choose
+                    # the guaranteed low extreme; prefer the center of the ladder.
+                    abs(r["_line"] - ladder_mid),
+                    # Prefer fresher copy only after line-type signals agree.
+                    _row_age_seconds(r),
+                    r["_line"],
+                )
             )
-        )
-        selected.append(candidates[0])
+            selected.append(candidates[0])
+        else:
+            candidates.sort(
+                key=lambda r: (
+                    _row_age_seconds(r),
+                    str(
+                        r.get("last_update")
+                        or r.get("lastUpdate")
+                        or r.get("snapshot_time")
+                        or ""
+                    ),
+                )
+            )
+            selected.append(candidates[0])
 
     return selected
 
