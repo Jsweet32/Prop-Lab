@@ -22,6 +22,7 @@ _refresh_state = {
     "finished_at": None,
     "last_result": None,
     "last_error": None,
+    "stage": None,
 }
 
 def _format_eastern_timestamp(value):
@@ -42,11 +43,14 @@ def _refresh_background():
     _refresh_state["running"] = True
     _refresh_state["started_at"] = datetime.now(timezone.utc).isoformat()
     _refresh_state["last_error"] = None
+    _refresh_state["stage"] = "Loading NFL lines + player history"
     try:
         count = refresh_all()
         _refresh_state["last_result"] = {"props": count}
+        _refresh_state["stage"] = "Complete"
     except Exception as exc:
         _refresh_state["last_error"] = str(exc)
+        _refresh_state["stage"] = "Failed"
     finally:
         _refresh_state["running"] = False
         _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
