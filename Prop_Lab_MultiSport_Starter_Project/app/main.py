@@ -9,6 +9,7 @@ from .sports.nba.routes import router as nba_router
 from .sports.cfb.routes import router as cfb_router
 from .sports.mlb.db import init_db as init_mlb_db
 from .sports.mlb.kalshi_store import init_kalshi_db
+from .sports.mlb.history import init_history_db
 from .sports.mlb.scheduler import start_scheduler as start_mlb_scheduler
 
 app = FastAPI(
@@ -32,6 +33,7 @@ def startup():
     global _mlb_scheduler
     init_mlb_db()
     init_kalshi_db()
+    init_history_db()
     _mlb_scheduler = start_mlb_scheduler()
 
 
