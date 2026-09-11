@@ -370,6 +370,77 @@ main{
   .site-links{justify-content:flex-end}
 }
 
+
+/* Compact MLB model-performance summary */
+.mlb-performance-summary{
+  margin:12px 20px 4px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.015);
+  display:grid;
+  grid-template-columns:minmax(180px,1.3fr) repeat(4,minmax(95px,.72fr)) auto;
+  overflow:hidden;
+}
+.mlb-perf-intro,
+.mlb-perf-stat,
+.mlb-perf-link-wrap{
+  min-height:74px;
+  padding:13px 15px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.mlb-perf-stat,
+.mlb-perf-link-wrap{border-left:1px solid var(--border)}
+.mlb-perf-kicker,
+.mlb-perf-label{
+  color:var(--muted);
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.mlb-perf-title{
+  margin-top:5px;
+  font-size:14px;
+  font-weight:750;
+}
+.mlb-perf-value{
+  margin-top:7px;
+  font-size:21px;
+  line-height:1;
+  font-weight:400;
+  letter-spacing:-.025em;
+}
+.mlb-perf-meta{
+  margin-top:5px;
+  color:var(--muted);
+  font-size:9px;
+}
+.mlb-perf-link{
+  color:var(--text);
+  text-decoration:none;
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px 10px;
+  font-size:10px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.mlb-perf-link:hover{background:rgba(255,255,255,.045)}
+@media(max-width:1050px){
+  .mlb-performance-summary{grid-template-columns:1fr 1fr 1fr}
+  .mlb-perf-intro{grid-column:1 / -1}
+  .mlb-perf-stat:nth-of-type(2){border-left:0}
+  .mlb-perf-link-wrap{grid-column:1 / -1;border-left:0;border-top:1px solid var(--border)}
+}
+@media(max-width:650px){
+  .mlb-performance-summary{margin-left:14px;margin-right:14px;grid-template-columns:1fr 1fr}
+  .mlb-perf-intro{grid-column:1 / -1}
+  .mlb-perf-stat{border-top:1px solid var(--border)}
+  .mlb-perf-stat:nth-of-type(even){border-left:0}
+}
+
 </style>
 
 </head>
@@ -380,10 +451,10 @@ main{
   <div class="site-links">
     <a class="site-link" href="/">HOME</a>
     <a class="site-link active" href="/mlb">MLB</a>
-    <a class="site-link" href="/mlb/performance">PERFORMANCE</a>
     <a class="site-link" href="/nfl">NFL</a>
     <a class="site-link" href="/nba">NBA</a>
     <a class="site-link" href="/cfb">CFB</a>
+    <a class="site-link" href="/performance">PERFORMANCE</a>
   </div>
 </nav>
 
@@ -513,6 +584,40 @@ main{
   <option value="model_desc">Model: high → low</option>
 </select>
 <input id="search" placeholder="Search player, market, opponent or pitcher">
+</section>
+
+
+<section class="mlb-performance-summary">
+  {% macro mlb_perf_pct(s) -%}
+    {% if s.hit_rate is not none %}{{ "%.1f"|format(s.hit_rate * 100) }}%{% else %}—{% endif %}
+  {%- endmacro %}
+  <div class="mlb-perf-intro">
+    <div class="mlb-perf-kicker">TRACK RECORD</div>
+    <div class="mlb-perf-title">MLB Model Performance</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">A + B</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.overall) }}</div>
+    <div class="mlb-perf-meta">{{ performance.overall.wins }}–{{ performance.overall.losses }}</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">A Grade</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.grade_a) }}</div>
+    <div class="mlb-perf-meta">{{ performance.grade_a.graded }} decisions</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">B Grade</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.grade_b) }}</div>
+    <div class="mlb-perf-meta">{{ performance.grade_b.graded }} decisions</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">Last 7D</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.last_7) }}</div>
+    <div class="mlb-perf-meta">{{ performance.last_7.wins }}–{{ performance.last_7.losses }}</div>
+  </div>
+  <div class="mlb-perf-link-wrap">
+    <a class="mlb-perf-link" href="/performance?sport=mlb">View full performance →</a>
+  </div>
 </section>
 
 <main>
