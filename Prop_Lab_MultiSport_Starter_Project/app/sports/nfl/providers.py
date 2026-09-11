@@ -449,13 +449,13 @@ def fetch_props(markets=None):
     NFL source strategy:
 
       - PrizePicks: native STANDARD projections only.
-      - Underdog: native BALANCED, non-Flash projections only.
+      - Underdog: native BALANCED, non-Flash projections when reachable.
+      - If native Underdog is blocked from Render, fall back to ParlayAPI.
       - Fliff/Kalshi/etc: ParlayAPI.
 
-    We intentionally DO NOT fall back to ParlayAPI for Underdog. Parlay's flat
-    /props rows do not expose Underdog's native line_type/Flash metadata, so the
-    fallback cannot prove which rung is the regular board line. Returning fewer
-    Underdog rows is preferable to labeling a 0.5/1.5 alternate as the main line.
+    The Parlay Underdog fallback can contain multiple line rungs. updater.py
+    therefore performs a strict main-line selection instead of trusting the
+    newest/lowest line.
     """
     rows = _fetch_parlay_non_dfs(markets=markets)
     diagnostics = []
@@ -472,14 +472,17 @@ def fetch_props(markets=None):
             rows.extend(ud)
         else:
             diagnostics.append(
-                "Underdog native feed returned 0 verified main lines; "
-                "Underdog omitted rather than using alternate-prone fallback rows."
+                "Underdog native feed returned 0 rows; using ParlayAPI fallback."
             )
+            rows.extend(_fetch_parlay_underdog(markets=markets))
     except Exception as exc:
         diagnostics.append(
-            f"Underdog native feed unavailable: {exc}; "
-            "Underdog omitted rather than using alternate-prone fallback rows."
+            f"Underdog native feed unavailable: {exc}; using ParlayAPI fallback."
         )
+        try:
+            rows.extend(_fetch_parlay_underdog(markets=markets))
+        except Exception as fallback_exc:
+            diagnostics.append(f"Underdog fallback unavailable: {fallback_exc}")
 
     if diagnostics:
         print(" | ".join(diagnostics))
