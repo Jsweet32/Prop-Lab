@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ league }} Prop Model | Prop Lab</title>
+<link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+<nav class="topbar">
+  <a class="brand" href="/">PROP LAB</a>
+  <div class="navlinks">
+    <a href="/">HOME</a>
+    <a href="/mlb">MLB</a>
+    <a class="{% if league == 'NFL' %}active{% endif %}" href="/nfl">NFL</a>
+    <a class="{% if league == 'NBA' %}active{% endif %}" href="/nba">NBA</a>
+    <a class="{% if league == 'CFB' %}active{% endif %}" href="/cfb">CFB</a>
+  </div>
+</nav>
+<main class="coming-shell">
+  <a class="back-link" href="/">← All models</a>
+  <div class="coming-card">
+    <div class="league-badge">{{ league }}</div>
+    <span class="status">COMING SOON</span>
+    <h1>{{ league }} Prop Model</h1>
+    <p>The page and route are already part of the main site. When this model is built, its backend can live inside <code>app/sports/{{ league|lower }}/</code> without changing the rest of the website.</p>
+    <div class="planned">
+      <span>PLANNED MODEL INPUTS</span>
+      <strong>{{ next_step }}</strong>
+    </div>
+    <a class="primary-link" href="/mlb">View the live MLB model →</a>
+  </div>
+</main>
+</body>
+</html>
