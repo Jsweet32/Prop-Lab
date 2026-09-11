@@ -239,9 +239,13 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-s
     }
   }
 
+  function shouldWatch(sport){
+    return localStorage.getItem(key(sport,'watching')) === '1';
+  }
+
   function checkAll(){
-    checkSport('mlb');
-    checkSport('nfl');
+    if(shouldWatch('mlb')) checkSport('mlb');
+    if(shouldWatch('nfl')) checkSport('nfl');
   }
 
   // Arm before leaving the page so the completion can be noticed elsewhere.
@@ -270,13 +274,16 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-s
     if(e.key && e.key.startsWith('propLab:')){
       renderSport('mlb');
       renderSport('nfl');
+      checkAll();
     }
   });
 
   renderSport('mlb');
   renderSport('nfl');
   checkAll();
-  setInterval(checkAll, 2500);
+  // Only check while a refresh is being tracked, and do it infrequently enough
+  // to avoid hammering a small Render instance.
+  setInterval(checkAll, 8000);
 })();
 </script>
 
