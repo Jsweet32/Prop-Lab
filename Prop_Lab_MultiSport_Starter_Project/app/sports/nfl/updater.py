@@ -285,45 +285,20 @@ def _select_main_lines(rows):
         candidates = marked or clean
 
         if book == "Underdog":
+            # Hard safety gate: the only authoritative main-line marker we have
+            # is Underdog's own native `line_type=balanced`. Flash/discount rows
+            # and all flattened Parlay fallback rows are excluded.
             native = [
                 r for r in candidates
                 if str(r.get("line_type") or "").lower() == "balanced"
                 and r.get("_fallback_source") != "parlay"
+                and r.get("flash_line") in (None, "", False)
             ]
-            if native:
-                # Native balanced is the real Underdog standard board line.
-                native.sort(key=_row_age_seconds)
-                selected.append(native[0])
+            if not native:
                 continue
 
-            # Parlay fallback: only retain if another trusted book anchors it.
-            fallback = [
-                r for r in candidates
-                if r.get("_fallback_source") == "parlay"
-            ]
-            if not fallback:
-                continue
-
-            player_key = str(fallback[0].get("_player") or "").strip().lower()
-            market_key = fallback[0].get("_market_key")
-            anchor = ref_median(player_key, market_key)
-
-            if anchor is None:
-                # Accuracy over coverage: do not surface an unverified DFS rung.
-                continue
-
-            fallback.sort(
-                key=lambda r: (
-                    abs(float(r["_line"]) - anchor),
-                    _row_age_seconds(r),
-                )
-            )
-            best = fallback[0]
-
-            # A normal DFS line should be near the standard cross-book market.
-            # If the nearest rung is still wildly different, omit it.
-            if abs(float(best["_line"]) - anchor) <= 1.0:
-                selected.append(best)
+            native.sort(key=_row_age_seconds)
+            selected.append(native[0])
             continue
 
         if book in DFS_BOOKS and len(candidates) > 1:
