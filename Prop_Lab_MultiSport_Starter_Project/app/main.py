@@ -11,6 +11,7 @@ from .sports.mlb.db import init_db as init_mlb_db
 from .sports.mlb.kalshi_store import init_kalshi_db
 from .sports.mlb.history import init_history_db
 from .sports.mlb.scheduler import start_scheduler as start_mlb_scheduler
+from .core.performance import global_performance_data
 
 app = FastAPI(
     title="Prop Lab",
@@ -40,6 +41,21 @@ def startup():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("home.html", {"request": request})
+
+
+@app.get("/performance", response_class=HTMLResponse)
+def performance(request: Request, sport: str = "all"):
+    data = global_performance_data()
+    valid = {"all", "mlb", "nfl", "nba", "cfb"}
+    selected = sport.lower() if sport.lower() in valid else "all"
+    return templates.TemplateResponse(
+        "performance.html",
+        {
+            "request": request,
+            "selected_sport": selected,
+            **data,
+        },
+    )
 
 
 @app.get("/health")
