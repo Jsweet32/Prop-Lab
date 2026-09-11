@@ -601,7 +601,7 @@ main{
 <td><span class="pill {{ r.verdict|lower|replace(' ','-') }}">{{ r.verdict }}</span></td>
 <td>{% if r.recommended_side %}<span class="side {{ r.recommended_side|lower }}">{{ r.recommended_side }}</span>{% else %}—{% endif %}</td>
 <td>{{ r.grade or '—' }}</td>
-<td>{{ r.bookmaker_title }}</td>
+<td>{% if 'underdog' in (r.bookmaker_title or '')|lower %}Underdog{% elif 'prizepicks' in (r.bookmaker_title or '')|lower %}PrizePicks{% else %}{{ r.bookmaker_title }}{% endif %}</td>
 <td class="player"><div class="player-wrap">
   {% if r.headshot_url %}<img class="player-headshot" loading="lazy" src="{{ r.headshot_url }}" alt="{{ r.player }}" onerror="this.remove();this.nextElementSibling.style.display='flex'"> <span class="player-headshot-fallback" style="display:none">{{ (r.player or '?')[:1] }}</span>
   {% else %}<span class="player-headshot-fallback">{{ (r.player or '?')[:1] }}</span>{% endif %}
