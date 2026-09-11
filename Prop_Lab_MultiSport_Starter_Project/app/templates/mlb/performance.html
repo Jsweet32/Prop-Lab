@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLB Performance | Prop Lab</title>
+<style>
+:root{
+  --bg:#0d0f12;--panel:#15181d;--panel2:#1b1f25;--border:#2b3038;
+  --text:#f3f4f6;--muted:#9097a2;--green:#55d88a;--red:#ef7272;--amber:#e8b454;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.site-nav{height:58px;padding:0 22px;border-bottom:1px solid var(--border);background:#111317;display:flex;align-items:center;justify-content:space-between;gap:18px;position:sticky;top:0;z-index:100}
+.site-brand{color:var(--text);text-decoration:none;font-weight:800;letter-spacing:.02em;font-size:17px}
+.site-links{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.site-link{color:var(--muted);text-decoration:none;font-size:12px;font-weight:700;padding:8px 10px;border-radius:8px}
+.site-link:hover,.site-link.active{color:var(--text);background:rgba(255,255,255,.055)}
+.shell{max-width:1380px;margin:0 auto;padding:30px 22px 60px}
+.head{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:22px}
+.eyebrow{font-size:10px;font-weight:850;letter-spacing:.13em;color:var(--muted)}
+h1{font-size:34px;letter-spacing:-.035em;margin:7px 0 7px}
+.sub{color:var(--muted);font-size:13px;line-height:1.5}
+.grade-btn{border:1px solid var(--border);background:#f0f1f3;color:#111317;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}
+.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--border);border-radius:13px;overflow:hidden;background:var(--panel)}
+.metric{padding:19px 18px;min-height:112px;border-left:1px solid var(--border)}
+.metric:first-child{border-left:0}
+.metric-label{font-size:10px;letter-spacing:.08em;font-weight:800;color:var(--muted);margin-bottom:13px}
+.metric-value{font-size:30px;line-height:1;font-weight:450;letter-spacing:-.03em}
+.metric-meta{font-size:10px;color:var(--muted);margin-top:9px}
+.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-top:14px}
+.panel{border:1px solid var(--border);border-radius:13px;background:var(--panel);overflow:hidden}
+.panel-head{padding:15px 17px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.panel-title{font-size:12px;font-weight:800;letter-spacing:.03em}
+.panel-note{font-size:10px;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th{background:#20242a;color:#c8ccd2;font-size:9px;letter-spacing:.055em;text-align:left;padding:10px 12px}
+td{padding:11px 12px;border-top:1px solid var(--border);font-size:12px}
+tbody tr:first-child td{border-top:0}
+.muted{color:var(--muted)}
+.rate{font-weight:750}
+.win{color:var(--green);font-weight:800}
+.loss{color:var(--red);font-weight:800}
+.push{color:var(--amber);font-weight:800}
+.pending{color:var(--muted);font-weight:700}
+.pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:4px 7px;font-size:9px;font-weight:800}
+.grade-a{color:#bff2d0;border-color:#31523c;background:rgba(85,216,138,.05)}
+.grade-b{color:#c9d7ff;border-color:#364568;background:rgba(100,135,220,.06)}
+.recent{margin-top:14px}
+.empty{padding:28px;color:var(--muted);font-size:13px}
+.explainer{margin-top:14px;padding:15px 17px;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:11px;line-height:1.6;background:#111419}
+@media(max-width:950px){.metrics{grid-template-columns:1fr 1fr}.metric{border-top:1px solid var(--border)}.metric:first-child,.metric:nth-child(2){border-top:0}.grid{grid-template-columns:1fr}}
+@media(max-width:650px){.site-nav{height:auto;min-height:58px;padding:10px 14px;align-items:flex-start}.shell{padding:22px 14px}.head{align-items:flex-start;flex-direction:column}.metrics{grid-template-columns:1fr 1fr}.metric-value{font-size:26px}.table-wrap{overflow-x:auto}table{min-width:760px}}
+</style>
+</head>
+<body>
+<nav class="site-nav">
+  <a class="site-brand" href="/">PROP LAB</a>
+  <div class="site-links">
+    <a class="site-link" href="/">HOME</a>
+    <a class="site-link" href="/mlb">MLB</a>
+    <a class="site-link active" href="/mlb/performance">PERFORMANCE</a>
+    <a class="site-link" href="/nfl">NFL</a>
+    <a class="site-link" href="/nba">NBA</a>
+    <a class="site-link" href="/cfb">CFB</a>
+  </div>
+</nav>
+
+<main class="shell">
+  <div class="head">
+    <div>
+      <div class="eyebrow">MLB MODEL TRACK RECORD</div>
+      <h1>Performance</h1>
+      <div class="sub">A and B grade GOOD + PROVISIONAL recommendations, frozen before the game and graded from final MLB player stats.</div>
+    </div>
+    <form method="post" action="/mlb/performance/grade">
+      <button class="grade-btn" type="submit">Grade completed games</button>
+    </form>
+  </div>
+
+  {% macro pct(s) -%}
+    {% if s.hit_rate is not none %}{{ "%.1f"|format(s.hit_rate * 100) }}%{% else %}—{% endif %}
+  {%- endmacro %}
+
+  <section class="metrics">
+    <div class="metric">
+      <div class="metric-label">A + B HIT RATE</div>
+      <div class="metric-value">{{ pct(overall) }}</div>
+      <div class="metric-meta">{{ overall.wins }}–{{ overall.losses }} · {{ overall.pushes }} pushes · {{ overall.pending }} pending</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">A GRADE</div>
+      <div class="metric-value">{{ pct(grade_a) }}</div>
+      <div class="metric-meta">{{ grade_a.wins }} wins / {{ grade_a.graded }} decisions</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">B GRADE</div>
+      <div class="metric-value">{{ pct(grade_b) }}</div>
+      <div class="metric-meta">{{ grade_b.wins }} wins / {{ grade_b.graded }} decisions</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">LAST 7 DAYS</div>
+      <div class="metric-value">{{ pct(last_7) }}</div>
+      <div class="metric-meta">{{ last_7.wins }}–{{ last_7.losses }} · {{ last_7.pending }} pending</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">LAST 30 DAYS</div>
+      <div class="metric-value">{{ pct(last_30) }}</div>
+      <div class="metric-meta">{{ last_30.wins }}–{{ last_30.losses }} · {{ last_30.pending }} pending</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">PERFORMANCE BY MARKET</span>
+        <span class="panel-note">Pushes excluded from hit-rate denominator</span>
+      </div>
+      {% if markets %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>MARKET</th><th>HIT RATE</th><th>W</th><th>L</th><th>PUSH</th><th>PENDING</th></tr></thead>
+          <tbody>
+          {% for x in markets %}
+            <tr>
+              <td>{{ x.market }}</td>
+              <td class="rate">{{ "%.1f"|format(x.hit_rate * 100) }}%</td>
+              <td class="win">{{ x.wins }}</td>
+              <td class="loss">{{ x.losses }}</td>
+              <td>{{ x.pushes }}</td>
+              <td class="muted">{{ x.pending }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="empty">No completed tracked props yet. New A/B picks will begin saving automatically after this patch is deployed.</div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">PERFORMANCE BY SPORTSBOOK</span>
+        <span class="panel-note">Exact displayed recommendations</span>
+      </div>
+      {% if books %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>BOOK</th><th>HIT RATE</th><th>W</th><th>L</th><th>PENDING</th></tr></thead>
+          <tbody>
+          {% for x in books %}
+            <tr>
+              <td>{{ x.book }}</td>
+              <td class="rate">{{ "%.1f"|format(x.hit_rate * 100) }}%</td>
+              <td class="win">{{ x.wins }}</td>
+              <td class="loss">{{ x.losses }}</td>
+              <td class="muted">{{ x.pending }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="empty">No graded sportsbook results yet.</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel recent">
+    <div class="panel-head">
+      <span class="panel-title">RECENT TRACKED PROPS</span>
+      <span class="panel-note">Newest first</span>
+    </div>
+    {% if recent %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>DATE</th><th>GRADE</th><th>BOOK</th><th>PLAYER</th><th>MARKET</th><th>PICK</th><th>ACTUAL</th><th>RESULT</th></tr>
+        </thead>
+        <tbody>
+        {% for r in recent %}
+          <tr>
+            <td class="muted">{{ r.game_date }}</td>
+            <td><span class="pill {% if r.grade == 'A' %}grade-a{% else %}grade-b{% endif %}">{{ r.grade }}</span></td>
+            <td>{{ r.bookmaker_title }}</td>
+            <td>{{ r.player }}</td>
+            <td>{{ r.market }}</td>
+            <td>{{ r.recommended_side }} {{ r.line }}</td>
+            <td>{% if r.actual_value is not none %}{{ r.actual_value }}{% else %}—{% endif %}</td>
+            <td class="{% if r.result=='WIN' %}win{% elif r.result=='LOSS' %}loss{% elif r.result=='PUSH' %}push{% else %}pending{% endif %}">{{ r.result }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty">No tracked props yet.</div>
+    {% endif %}
+  </section>
+
+  <div class="explainer">
+    Hit rate = wins ÷ (wins + losses). Pushes and pending games are not counted as wins or losses. The tracker saves each exact A/B recommendation once, so repeated refreshes of the same player, market, line, side and sportsbook do not inflate the record.
+  </div>
+</main>
+</body>
+</html>
