@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
-from threading import Lock
+from threading import Lock, Thread
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -56,6 +56,23 @@ def _refresh_background():
         _refresh_state["finished_at"] = datetime.now(timezone.utc).isoformat()
         _refresh_lock.release()
 
+
+def start_refresh():
+    """
+    Start the NFL refresh as a server-side thread.
+
+    It continues running even if the user changes pages or closes the browser tab.
+    """
+    if _refresh_state["running"]:
+        return False
+
+    Thread(
+        target=_refresh_background,
+        name="nfl-prop-refresh",
+        daemon=True,
+    ).start()
+    return True
+
 @router.get("/nfl", response_class=HTMLResponse)
 def nfl_dashboard(request: Request):
     snap = latest_snapshot()
@@ -72,9 +89,8 @@ def nfl_dashboard(request: Request):
     )
 
 @router.post("/nfl/refresh")
-def refresh(background_tasks: BackgroundTasks):
-    if not _refresh_state["running"]:
-        background_tasks.add_task(_refresh_background)
+def refresh():
+    start_refresh()
     return RedirectResponse("/nfl?refresh=started", status_code=303)
 
 @router.get("/api/nfl/refresh-status")
