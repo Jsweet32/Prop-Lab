@@ -485,6 +485,11 @@ main{
   </div>
 </section>
 
+<div id="snapshotFreshnessBanner" class="stale-banner">
+  <strong>Saved props are stale.</strong>
+  <span id="snapshotFreshnessBannerText">Press Refresh now before using these lines.</span>
+</div>
+
 {% set ns=namespace(pp=0,ud=0,fl=0,ka=0,over=0,under=0,visible=0) %}
 {% for r in rows %}
   {% if r.verdict not in ['NO ACTION','NEEDS DATA'] %}
@@ -504,9 +509,9 @@ main{
       <div class="summary-eyebrow">LATEST PROPS SNAPSHOT</div>
       <div class="summary-time-row">
         <span class="summary-time" id="snapshotValue">{{ snapshot_display }}</span>
-        <div id="snapshotHealth" class="snapshot-health {% if snapshot %}fresh{% else %}empty{% endif %}">
+        <div id="snapshotHealth" class="snapshot-health empty">
           <span class="snapshot-dot"></span>
-          <span id="snapshotHealthText">{% if snapshot %}LIVE{% else %}NO DATA{% endif %}</span>
+          <span id="snapshotHealthText">Checking age…</span>
         </div>
       </div>
     </div>
@@ -684,17 +689,138 @@ function buildGameFilter(){
   [...new Set([...document.querySelectorAll('#board tbody tr[data-game]')].map(r=>r.dataset.game).filter(Boolean))].sort().forEach(game=>{const label=document.createElement('label');label.innerHTML=`<input type="checkbox" value="${esc(game)}"> ${esc(game)}`;menu.insertBefore(label,actions);});
 }
 
+const snapshotHost=document.querySelector('[data-snapshot]');
+const snapshotRaw=snapshotHost ? snapshotHost.dataset.snapshot : '';
+const snapshotHealth=document.getElementById('snapshotHealth');
+const snapshotHealthText=document.getElementById('snapshotHealthText');
+const freshnessBanner=document.getElementById('snapshotFreshnessBanner');
+const freshnessBannerText=document.getElementById('snapshotFreshnessBannerText');
+const refreshButton=document.getElementById('refreshButton');
+
+function formatAge(ms){
+  const mins=Math.max(0,Math.floor(ms/60000));
+  if(mins<1) return 'just now';
+  if(mins<60) return `${mins}m old`;
+  const hrs=Math.floor(mins/60), rem=mins%60;
+  if(hrs<24) return rem ? `${hrs}h ${rem}m old` : `${hrs}h old`;
+  const days=Math.floor(hrs/24);
+  return `${days}d ${hrs%24}h old`;
+}
+
+function updateSnapshotFreshness(){
+  snapshotHealth.classList.remove('fresh','aging','stale','empty');
+
+  if(!snapshotRaw){
+    snapshotHealth.classList.add('empty');
+    snapshotHealthText.textContent='No saved props yet';
+    freshnessBanner.style.display='block';
+    freshnessBannerText.textContent=' Run Refresh now to create the first saved board.';
+    return;
+  }
+
+  const dt=new Date(snapshotRaw);
+  if(Number.isNaN(dt.getTime())){
+    snapshotHealth.classList.add('empty');
+    snapshotHealthText.textContent='Age unavailable';
+    freshnessBanner.style.display='none';
+    return;
+  }
+
+  const age=Date.now()-dt.getTime();
+  const mins=age/60000;
+
+  // Match MLB exactly: <10m fresh, 10–30m aging, 30m+ stale.
+  if(mins<10){
+    snapshotHealth.classList.add('fresh');
+    snapshotHealthText.textContent=`FRESH · ${formatAge(age)}`;
+    freshnessBanner.style.display='none';
+  }else if(mins<30){
+    snapshotHealth.classList.add('aging');
+    snapshotHealthText.textContent=`AGING · ${formatAge(age)}`;
+    freshnessBanner.style.display='none';
+  }else{
+    snapshotHealth.classList.add('stale');
+    snapshotHealthText.textContent=`STALE · ${formatAge(age)}`;
+    freshnessBanner.style.display='block';
+    freshnessBannerText.textContent=` These props are ${formatAge(age)}. Press Refresh now before using them.`;
+  }
+}
+
 let nflWasRefreshing=false;
+
+function setRefreshingPill(){
+  snapshotHealth.classList.remove('aging','stale','empty');
+  snapshotHealth.classList.add('fresh');
+  snapshotHealthText.textContent='REFRESHING';
+  freshnessBanner.style.display='none';
+  if(refreshButton){
+    refreshButton.disabled=true;
+    refreshButton.textContent='Refreshing…';
+  }
+}
+
+function setRefreshFailedPill(message){
+  snapshotHealth.classList.remove('fresh','aging','stale','empty');
+  snapshotHealth.classList.add('stale');
+  snapshotHealthText.textContent='REFRESH FAILED';
+  snapshotHealth.title=message||'NFL refresh failed';
+  if(refreshButton){
+    refreshButton.disabled=false;
+    refreshButton.textContent='Refresh now';
+  }
+}
+
 async function pollRefresh(){
   try{
-    const r=await fetch('/api/nfl/refresh-status',{cache:'no-store'}),j=await r.json();
-    const pill=document.getElementById('snapshotHealth'),text=document.getElementById('snapshotHealthText'),button=document.getElementById('refreshButton');
-    if(j.running){nflWasRefreshing=true;text.textContent='REFRESHING';pill.className='snapshot-health aging';pill.title=j.stage||'Refreshing NFL model';if(button){button.disabled=true;button.textContent='Refreshing…';}return;}
-    if(button){button.disabled=false;button.textContent='Refresh now';}
-    if(j.snapshot&&j.snapshot!=="{{ snapshot or '' }}"){location.reload();return;}
-    if(nflWasRefreshing){nflWasRefreshing=false;if(j.last_error){text.textContent='REFRESH FAILED';pill.className='snapshot-health stale';pill.title=j.last_error;}else if(!j.snapshot){text.textContent='NO DATA';pill.className='snapshot-health empty';}else{text.textContent='LIVE';pill.className='snapshot-health fresh';}}
-  }catch(e){}
+    const r=await fetch('/api/nfl/refresh-status',{cache:'no-store'});
+    const j=await r.json();
+
+    if(j.running){
+      nflWasRefreshing=true;
+      setRefreshingPill();
+    }else{
+      if(refreshButton){
+        refreshButton.disabled=false;
+        refreshButton.textContent='Refresh now';
+      }
+
+      if(j.snapshot && j.snapshot!=="{{ snapshot or '' }}"){
+        location.reload();
+        return;
+      }
+
+      if(nflWasRefreshing){
+        nflWasRefreshing=false;
+        if(j.last_error){
+          setRefreshFailedPill(j.last_error);
+          setTimeout(updateSnapshotFreshness,1800);
+        }else{
+          snapshotHealth.classList.remove('aging','stale','empty');
+          snapshotHealth.classList.add('fresh');
+          snapshotHealthText.textContent='UPDATED';
+          freshnessBanner.style.display='none';
+          setTimeout(()=>window.location.href='/nfl',650);
+          return;
+        }
+      }else{
+        updateSnapshotFreshness();
+      }
+    }
+  }catch(e){
+    // Keep the saved board usable if one status request fails.
+  }
+  setTimeout(pollRefresh,2500);
 }
+
+updateSnapshotFreshness();
+setInterval(updateSnapshotFreshness,60000);
+
+const qs=new URLSearchParams(window.location.search);
+if(qs.get('refresh')==='started'){
+  nflWasRefreshing=true;
+  setRefreshingPill();
+}
+pollRefresh();
 
 buildGameFilter();loadScoreboard();pollRefresh();setInterval(loadScoreboard,60000);setInterval(pollRefresh,4000);
 </script>
