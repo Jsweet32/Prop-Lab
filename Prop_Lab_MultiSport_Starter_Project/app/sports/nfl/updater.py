@@ -348,38 +348,40 @@ def _select_main_lines(rows):
                     selected.append(best)
                 continue
 
-            # Signal #2: Underdog's own effective Higher/Lower prices.
-            # A regular line is designed to be roughly balanced; discounted /
-            # alternate rungs are intentionally skewed. Only trust a clearly
-            # balanced row when PrizePicks does not offer the same player/stat.
-            priced = [
-                r for r in fallback
-                if _american_implied_local(r.get("over_price")) is not None
-                and _american_implied_local(r.get("under_price")) is not None
-            ]
-            if priced:
-                priced.sort(
-                    key=lambda r: (
-                        _dfs_balance_score(r),
-                        _row_age_seconds(r),
-                    )
-                )
-                best = priced[0]
-                if _dfs_balance_score(best) <= 0.08:
-                    selected.append(best)
-                    continue
+            # No PrizePicks anchor: DO NOT use the most balanced effective
+            # Higher/Lower price as the main-line signal. Parlay's effective
+            # pricing can make low alternate rungs (especially 0.5 reception
+            # overs) look deceptively balanced, which is exactly what caused the
+            # inflated 80-90% OVER recommendations.
 
-            # Signal #3 (weakest): only use Fliff when there is exactly one
-            # plausible nearby Underdog rung. This avoids letting a Fliff alt
-            # ladder drag Underdog toward an extreme 0.5/1.5 line.
+            # Prefer Fliff only when it identifies a nearby rung.
             f_anchor = fliff_anchor(player_key, market_key)
             if f_anchor is not None:
                 nearby = [
                     r for r in fallback
                     if abs(float(r["_line"]) - f_anchor) <= max(1.0, abs(f_anchor) * 0.15)
                 ]
-                if len(nearby) == 1:
+                if nearby:
+                    nearby.sort(
+                        key=lambda r: (
+                            abs(float(r["_line"]) - f_anchor),
+                            _row_age_seconds(r),
+                        )
+                    )
                     selected.append(nearby[0])
+                    continue
+
+            # Last resort: use the CENTER of Underdog's own line ladder, never
+            # the lowest/easiest rung. This mirrors the successful MLB cleanup
+            # strategy and prevents 0.5 alternates from winning merely because
+            # their effective price appears close to balanced.
+            if len(fallback) >= 3:
+                fallback.sort(key=lambda r: float(r["_line"]))
+                selected.append(fallback[len(fallback) // 2])
+                continue
+
+            # With only one/two unverified fallback rungs there is not enough
+            # evidence to call either one the standard line.
             continue
 
         if book in DFS_BOOKS and len(candidates) > 1:
