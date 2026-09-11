@@ -122,19 +122,19 @@ def _cache_get(bucket, key, ttl):
         if item:
             created, value = item
             if now - created <= ttl:
-                return deepcopy(value)
+                return value
             _mlb_cache[bucket].pop(key, None)
 
     value = _persistent_get(bucket, key, ttl)
     if value is not None:
         with _mlb_cache_lock:
-            _mlb_cache[bucket][key] = (now, deepcopy(value))
-        return deepcopy(value)
+            _mlb_cache[bucket][key] = (now, value)
+        return value
     return None
 
 def _cache_set(bucket, key, value):
     with _mlb_cache_lock:
-        _mlb_cache[bucket][key] = (time.time(), deepcopy(value))
+        _mlb_cache[bucket][key] = (time.time(), value)
     _persistent_set(bucket, key, value)
     return value
 
@@ -173,6 +173,62 @@ def _fetch_prop_batch(markets):
     if isinstance(payload, list):
         return payload
     return []
+
+
+def _cache_warm(bucket, items, ttl):
+    """
+    Prime the in-process cache for a set of keys from persistent storage using
+    one Postgres connection. This is used by the manual MLB refresh so we do not
+    open a new Neon connection for every player/game-log lookup.
+    """
+    if not items or not DATABASE_URL:
+        return
+
+    _ensure_persistent_cache()
+    if not _persistent_cache_ready:
+        return
+
+    missing = []
+    now = time.time()
+    with _mlb_cache_lock:
+        for key in items:
+            current = _mlb_cache[bucket].get(key)
+            if current and now - current[0] <= ttl:
+                continue
+            missing.append(key)
+
+    if not missing:
+        return
+
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        cache_keys = [_cache_key(k) for k in missing]
+        placeholders = ",".join(["%s"] * len(cache_keys))
+        sql = (
+            "SELECT cache_key,created_at,payload FROM mlb_api_cache "
+            f"WHERE bucket=%s AND cache_key IN ({placeholders})"
+        )
+
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10) as c:
+            rows = c.execute(sql, (bucket, *cache_keys)).fetchall()
+
+        key_by_serialized = {_cache_key(k): k for k in missing}
+        with _mlb_cache_lock:
+            for row in rows:
+                if now - float(row["created_at"]) > ttl:
+                    continue
+                original_key = key_by_serialized.get(row["cache_key"])
+                if original_key is None:
+                    continue
+                try:
+                    value = json.loads(row["payload"])
+                except Exception:
+                    continue
+                _mlb_cache[bucket][original_key] = (now, value)
+    except Exception:
+        return
 
 
 def fetch_props():
