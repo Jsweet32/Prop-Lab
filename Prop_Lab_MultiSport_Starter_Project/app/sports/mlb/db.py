@@ -15,6 +15,7 @@ COLUMNS = {
     "home_team":"TEXT",
     "away_team":"TEXT",
     "commence_time":"TEXT",
+    "game_pk":"INTEGER",
     "model_prob_over":"REAL",
     "base_prob_over":"REAL",
     "implied_prob_over":"REAL",
