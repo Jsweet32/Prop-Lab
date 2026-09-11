@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MLB Prop Model | Prop Lab</title>
-<link rel="icon" type="image/png" href="/static/beaker-favicon.png">
 <link rel="stylesheet" href="/static/style.css">
 <style>
 .scoreboard-wrap{padding:12px 32px 0}
@@ -442,6 +441,8 @@ main{
   .mlb-perf-stat:nth-of-type(even){border-left:0}
 }
 
+
+#refreshBanner{display:none!important}
 </style>
 
 </head>
@@ -1054,10 +1055,25 @@ updateScoreboard();
 setInterval(updateScoreboard,30000);
 
 const banner=document.getElementById('refreshBanner');
-const title=document.getElementById('refreshTitle');
-const detail=document.getElementById('refreshDetail');
 const btn=document.getElementById('refreshButton');
 let wasRunning=false;
+
+function setRefreshingPill(){
+  snapshotHealth.classList.remove('aging','stale','empty');
+  snapshotHealth.classList.add('fresh');
+  snapshotHealthText.textContent='REFRESHING';
+  freshnessBanner.style.display='none';
+  btn.disabled=true;
+  btn.textContent='Refreshing…';
+}
+
+function setRefreshFailedPill(){
+  snapshotHealth.classList.remove('fresh','aging','stale','empty');
+  snapshotHealth.classList.add('stale');
+  snapshotHealthText.textContent='REFRESH FAILED';
+  btn.disabled=false;
+  btn.textContent='Refresh now';
+}
 
 async function pollRefresh(){
   try{
@@ -1066,40 +1082,40 @@ async function pollRefresh(){
 
     if(st.running){
       wasRunning=true;
-      banner.style.display='block';
-      title.textContent='Refreshing data…';
-      detail.textContent='You can keep using the dashboard while this runs.';
-      btn.disabled=true;
-      btn.textContent='Refreshing…';
+      setRefreshingPill();
     }else{
       btn.disabled=false;
       btn.textContent='Refresh now';
 
       if(wasRunning){
-        banner.style.display='block';
+        wasRunning=false;
         if(st.last_error){
-          title.textContent='Refresh failed';
-          detail.textContent=st.last_error;
+          setRefreshFailedPill();
+          // Once the refresh has failed, restore the age warning underneath
+          // so the user can still see that the saved board is stale.
+          setTimeout(updateSnapshotFreshness,1800);
         }else{
-          title.textContent='Refresh complete';
-          detail.textContent='Reloading the updated board…';
-          setTimeout(()=>window.location.href='/',1200);
+          snapshotHealth.classList.remove('aging','stale','empty');
+          snapshotHealth.classList.add('fresh');
+          snapshotHealthText.textContent='UPDATED';
+          freshnessBanner.style.display='none';
+          setTimeout(()=>window.location.href='/mlb',650);
           return;
         }
-        wasRunning=false;
+      }else{
+        updateSnapshotFreshness();
       }
     }
   }catch(e){
-    // Keep the dashboard usable even if a status poll briefly fails.
+    // Leave the current dashboard usable if a status poll briefly fails.
   }
   setTimeout(pollRefresh,2500);
 }
 
 const qs=new URLSearchParams(window.location.search);
 if(qs.get('refresh')==='started'){
-  banner.style.display='block';
-  title.textContent='Refresh started';
-  detail.textContent='The update is running in the background.';
+  wasRunning=true;
+  setRefreshingPill();
 }
 pollRefresh();
 </script>
