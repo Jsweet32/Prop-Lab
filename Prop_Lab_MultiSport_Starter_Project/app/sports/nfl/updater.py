@@ -201,26 +201,28 @@ def _normalize_rows(raw):
 
 def _select_main_lines(rows):
     """
-    Keep exactly one REGULAR/main projection per player / market / book.
+    Keep one regular/main projection per player / market / book.
 
-    DFS apps are special: alternate ladder rows can carry different synthetic
-    event ids even though they belong to the same player/market on the same
-    slate. Grouping by event_id therefore fails to compare the alternate ladder
-    and can accidentally keep every low "almost guaranteed" line.
+    Native DFS rows are authoritative:
+      - PrizePicks native feed already contains odds_type=standard only.
+      - Underdog native feed already contains line_type=balanced only.
 
-    For PrizePicks/Underdog we group by book + player + market + game date,
-    deliberately ignoring event_id. Then:
-      1) remove rows explicitly marked alternate/special,
-      2) prefer rows explicitly marked main/standard,
-      3) choose the line whose Higher/Lower effective pricing is closest to a
-         balanced 50/50 projection,
-      4) use the middle numeric line as a tie-breaker, NOT the lowest line.
-
-    Standard sportsbooks keep the event-aware grouping because their event ids
-    are stable and alternates are represented by separate alternate market keys.
+    When Render cannot reach Underdog directly, its Parlay fallback may contain
+    the full alternate ladder. In that case use PrizePicks' native STANDARD line
+    for the same player + market as the anchor, then choose the Underdog rung
+    closest to it. This prevents 0.5/1.5 "almost guaranteed" alternate lines from
+    winning simply because they are the freshest rung.
     """
-    groups = {}
+    # Native PrizePicks standard line lookup, normalized by player + market.
+    pp_main = {}
+    for r in rows:
+        if r.get("_book_title") == "PrizePicks":
+            key = (str(r.get("_player") or "").strip().lower(), r.get("_market_key"))
+            line = r.get("_line")
+            if key[0] and line is not None:
+                pp_main[key] = float(line)
 
+    groups = {}
     for r in rows:
         book = r["_book_title"]
 
@@ -229,8 +231,6 @@ def _select_main_lines(rows):
             if commence:
                 slate_date = commence.astimezone(timezone.utc).date().isoformat()
             else:
-                # Player-keyed DFS rows can be teamless; snapshot date is a
-                # safer grouping fallback than event_id for alternate ladders.
                 snap = _dt(
                     r.get("snapshot_time")
                     or r.get("last_update")
@@ -241,13 +241,7 @@ def _select_main_lines(rows):
                     if snap else ""
                 )
 
-            key = (
-                "dfs",
-                book,
-                r["_player"],
-                r["_market_key"],
-                slate_date,
-            )
+            key = ("dfs", book, r["_player"], r["_market_key"], slate_date)
         else:
             key = (
                 "book",
@@ -273,29 +267,62 @@ def _select_main_lines(rows):
         marked = [r for r in clean if _looks_main_marker(r)]
         candidates = marked or clean
 
-        if book in DFS_BOOKS and len(candidates) > 1:
-            numeric_lines = sorted(r["_line"] for r in candidates)
-            # True midpoint of the ladder; important for even-sized groups too.
+        if book == "Underdog" and len(candidates) > 1:
+            pkey = (
+                str(candidates[0].get("_player") or "").strip().lower(),
+                candidates[0].get("_market_key"),
+            )
+            anchor = pp_main.get(pkey)
+
+            numeric_lines = sorted(float(r["_line"]) for r in candidates)
             n = len(numeric_lines)
             if n % 2:
                 ladder_mid = numeric_lines[n // 2]
             else:
                 ladder_mid = (numeric_lines[n // 2 - 1] + numeric_lines[n // 2]) / 2.0
 
+            if anchor is not None:
+                # Standard DFS books can differ by 0.5 occasionally, so nearest
+                # line to PrizePicks is the best available fallback signal.
+                candidates.sort(
+                    key=lambda r: (
+                        abs(float(r["_line"]) - anchor),
+                        _dfs_balance_score(r),
+                        abs(float(r["_line"]) - ladder_mid),
+                        _row_age_seconds(r),
+                    )
+                )
+            else:
+                # No cross-book anchor: balanced effective pricing first, then
+                # center of the ladder. Never prefer the low extreme.
+                candidates.sort(
+                    key=lambda r: (
+                        _dfs_balance_score(r),
+                        abs(float(r["_line"]) - ladder_mid),
+                        _row_age_seconds(r),
+                    )
+                )
+
+            selected.append(candidates[0])
+
+        elif book in DFS_BOOKS and len(candidates) > 1:
+            # PrizePicks native feed should normally already be single-standard,
+            # but keep deterministic protection if duplicates exist.
+            numeric_lines = sorted(float(r["_line"]) for r in candidates)
+            n = len(numeric_lines)
+            ladder_mid = (
+                numeric_lines[n // 2]
+                if n % 2
+                else (numeric_lines[n // 2 - 1] + numeric_lines[n // 2]) / 2.0
+            )
             candidates.sort(
                 key=lambda r: (
-                    # Primary signal: regular DFS line is the balanced Higher /
-                    # Lower projection, while alt ladders skew the effective price.
-                    _dfs_balance_score(r),
-                    # If pricing is unavailable/equally balanced, never choose
-                    # the guaranteed low extreme; prefer the center of the ladder.
-                    abs(r["_line"] - ladder_mid),
-                    # Prefer fresher copy only after line-type signals agree.
+                    abs(float(r["_line"]) - ladder_mid),
                     _row_age_seconds(r),
-                    r["_line"],
                 )
             )
             selected.append(candidates[0])
+
         else:
             candidates.sort(
                 key=lambda r: (
