@@ -258,16 +258,77 @@ def _freshest(rows):
     )
 
 
+def _underdog_primary_score(row):
+    """
+    Lower is better.
+
+    ParlayAPI documents dfsOdds='effective' as the effective DFS payout price
+    (roughly -137/-137 for the normal 2-pick line). Underdog alternate ladders
+    carry skewed effective prices. Therefore the primary line is the rung whose
+    two-sided effective prices are:
+      1) most balanced after removing vig, and
+      2) closest to the normal effective DFS price,
+      3) with freshness as a tie-breaker.
+    """
+    over_price = row.get("over_price")
+    under_price = row.get("under_price")
+
+    over_imp = _american_implied_local(over_price)
+    under_imp = _american_implied_local(under_price)
+
+    # Missing two-sided prices are much weaker evidence than a fully-priced rung.
+    if over_imp is None or under_imp is None or (over_imp + under_imp) <= 0:
+        return (9.0, 9.0, _row_age_seconds(row))
+
+    fair_over = over_imp / (over_imp + under_imp)
+    balance = abs(fair_over - 0.50)
+
+    # Standard effective DFS payout is approximately -137 on both sides.
+    # Use price distance only as a secondary signal after no-vig balance.
+    try:
+        over_dist = abs(float(over_price) - (-137.0))
+        under_dist = abs(float(under_price) - (-137.0))
+        payout_dist = (over_dist + under_dist) / 274.0
+    except Exception:
+        payout_dist = 9.0
+
+    return (balance, payout_dist, _row_age_seconds(row))
+
+
+def _is_strong_primary_underdog(row):
+    """
+    A strict primary-line check for ParlayAPI Underdog fallback rows.
+
+    Primary Underdog rows should be close to a balanced two-sided price.
+    Alternate OVER rungs such as 0.5 receptions are usually heavily shaded
+    toward the OVER and therefore fail this test.
+    """
+    over_imp = _american_implied_local(row.get("over_price"))
+    under_imp = _american_implied_local(row.get("under_price"))
+    if over_imp is None or under_imp is None or (over_imp + under_imp) <= 0:
+        return False
+
+    fair_over = over_imp / (over_imp + under_imp)
+
+    # Allow a modest band around 50/50 so genuine current primary lines are kept
+    # without admitting heavily juiced alternate rungs.
+    return 0.44 <= fair_over <= 0.56
+
+
 def _select_underdog_like_mlb(underdog_rows, comparison_rows):
     """
-    Direct NFL adaptation of the MLB Underdog selector.
+    Keep exactly one PRIMARY Underdog projection per player/market/slate.
 
-    MLB strategy:
-      1. Group by actual player/market/slate rather than provider event ID.
-      2. Deduplicate identical line rungs.
-      3. Build PrizePicks/Fliff consensus for that player/market/slate.
-      4. Choose the Underdog rung closest to consensus.
-      5. If no comparison exists, choose the middle rung rather than an extreme.
+    Native Underdog:
+      - line_type='balanced'
+      - non-Flash
+      is authoritative.
+
+    ParlayAPI fallback:
+      - never choose the middle rung just because it is in the middle
+      - never choose a low OVER alternate because its line is attractive
+      - use effective two-sided prices to identify the actual primary rung
+      - use PrizePicks/Fliff consensus only to break close ties
     """
     comparison = {}
     for p in comparison_rows:
@@ -285,7 +346,7 @@ def _select_underdog_like_mlb(underdog_rows, comparison_rows):
     selected = []
 
     for key, group in groups.items():
-        # Native Underdog balanced/non-Flash line is already authoritative.
+        # Underdog native balanced line is the actual main projection.
         native = [
             r for r in group
             if str(r.get("line_type") or "").lower() == "balanced"
@@ -296,9 +357,12 @@ def _select_underdog_like_mlb(underdog_rows, comparison_rows):
             selected.append(_freshest(native))
             continue
 
-        # Exact copy of MLB's rung de-duplication behavior.
+        # Parlay fallback can expose several line rungs for the same projection.
+        # Deduplicate exact lines first.
         by_line = {}
         for row in group:
+            if row.get("_fallback_source") != "parlay":
+                continue
             ln = _float_line(row)
             if ln is None:
                 continue
@@ -306,27 +370,35 @@ def _select_underdog_like_mlb(underdog_rows, comparison_rows):
             if prior is None or _row_age_seconds(row) < _row_age_seconds(prior):
                 by_line[ln] = row
 
-        candidates = list(by_line.values()) or group
-        consensus_values = comparison.get(key, [])
+        candidates = list(by_line.values())
+        if not candidates:
+            continue
 
-        if consensus_values:
-            target = median(consensus_values)
-            with_lines = [r for r in candidates if _float_line(r) is not None]
-            if with_lines:
-                row = min(
-                    with_lines,
-                    key=lambda r: (
-                        abs(_float_line(r) - target),
-                        _row_age_seconds(r),
-                    )
+        # First choice: rows whose no-vig Higher/Lower split is genuinely close
+        # to 50/50. That is the defining characteristic of the primary line.
+        strong = [r for r in candidates if _is_strong_primary_underdog(r)]
+
+        target = None
+        comparison_values = comparison.get(key, [])
+        if comparison_values:
+            target = median(comparison_values)
+
+        pool = strong or candidates
+
+        # Rank by primary-line price signature FIRST.
+        # Cross-book line consensus is only a tie-breaker because other books can
+        # have their own alternate ladders.
+        if target is not None:
+            pool.sort(
+                key=lambda r: (
+                    _underdog_primary_score(r),
+                    abs(_float_line(r) - target),
                 )
-            else:
-                row = _freshest(candidates)
+            )
         else:
-            row = _middle_line(candidates)
+            pool.sort(key=_underdog_primary_score)
 
-        if row is not None:
-            selected.append(row)
+        selected.append(pool[0])
 
     return selected
 
