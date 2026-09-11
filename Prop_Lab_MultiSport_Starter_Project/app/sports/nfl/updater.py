@@ -45,6 +45,90 @@ def _line(row):
     except Exception:
         return None
 
+
+def _as_bool(v):
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    return str(v).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _is_explicit_alternate(row):
+    """Detect alternate/boosted/lowered rows before they enter the model."""
+    market_key = str(row.get("market_key") or "").lower()
+    market_label = str(row.get("market_label") or row.get("market") or "").lower()
+
+    # Canonical ParlayAPI alternate markets use the _alternate suffix.
+    if market_key.endswith("_alternate") or " alternate" in market_label:
+        return True
+
+    # Also handle source-specific metadata if it is present.
+    for key in (
+        "is_alternate", "isAlternate", "alternate", "is_alt", "isAlt",
+        "is_special", "isSpecial", "boosted", "is_boosted", "isBoosted",
+    ):
+        if _as_bool(row.get(key)):
+            return True
+
+    text_fields = (
+        "line_type", "lineType", "projection_type", "projectionType",
+        "option_type", "optionType", "variant", "tier", "label", "type",
+    )
+    alt_words = (
+        "alternate", "alt line", "demon", "goblin", "scorcher",
+        "discount", "boost", "special", "higher payout", "lower payout",
+    )
+    for key in text_fields:
+        value = str(row.get(key) or "").strip().lower()
+        if value and any(word in value for word in alt_words):
+            return True
+
+    return False
+
+
+def _american_implied_local(price):
+    try:
+        p = float(price)
+    except Exception:
+        return None
+    if p == 0:
+        return None
+    return 100.0 / (p + 100.0) if p > 0 else (-p) / ((-p) + 100.0)
+
+
+def _dfs_balance_score(row):
+    """
+    Lower is better.
+
+    Main PrizePicks/Underdog projections are the line intended to be roughly
+    balanced between higher/lower. Alternate ladders are intentionally skewed.
+    When a provider publishes several unlabeled rows for the same player/market,
+    use effective prices to select the row whose fair two-sided probability is
+    closest to 50/50.
+    """
+    over = _american_implied_local(row.get("over_price"))
+    under = _american_implied_local(row.get("under_price"))
+
+    if over is not None and under is not None and (over + under) > 0:
+        fair_over = over / (over + under)
+        return abs(fair_over - 0.50)
+
+    # Missing DFS prices give us no price-based signal. Keep them eligible but
+    # behind a clearly balanced priced row.
+    return 0.30
+
+
+def _looks_main_marker(row):
+    for key in (
+        "line_type", "lineType", "projection_type", "projectionType",
+        "option_type", "optionType", "variant", "tier", "label", "type",
+    ):
+        value = str(row.get(key) or "").strip().lower()
+        if value in {"main", "standard", "regular", "base", "normal"}:
+            return True
+    return False
+
 def _normalize_rows(raw):
     rows = []
     now = datetime.now(timezone.utc)
@@ -54,8 +138,9 @@ def _normalize_rows(raw):
         mk = canonical_market_key(p.get("market_key"), p.get("market_label") or p.get("market"))
         if not player or line is None or mk not in SUPPORTED:
             continue
-        # Do not model explicitly-labelled alternate lines as standard projections.
-        if str(p.get("market_key") or "").lower().endswith("_alternate"):
+        # Do not let alternate / boosted / discounted DFS ladders enter the
+        # normal NFL prop board.
+        if _is_explicit_alternate(p):
             continue
         commence = _dt(p.get("commence_time"))
         if commence:
@@ -78,8 +163,14 @@ def _normalize_rows(raw):
     return rows
 
 def _select_main_lines(rows):
-    # One normal line per player/market/game/book. If a DFS provider publishes
-    # multiple unlabeled lines, use the middle line rather than an extreme.
+    """
+    Keep exactly one true/main projection per player/market/game/book.
+
+    For DFS apps, simply choosing the middle numeric line is unsafe because
+    Underdog/PrizePicks may publish ladders around the projection. Prefer a row
+    explicitly marked main/standard; otherwise choose the line whose effective
+    higher/lower pricing is closest to a fair 50/50 split.
+    """
     groups = {}
     for r in rows:
         key = (
@@ -87,10 +178,47 @@ def _select_main_lines(rows):
             r.get("event_id") or r.get("commence_time") or "",
         )
         groups.setdefault(key, []).append(r)
+
     out = []
     for group in groups.values():
-        group.sort(key=lambda x: x["_line"])
-        out.append(group[(len(group) - 1) // 2])
+        # Safety net in case a source-specific alternate marker slipped through.
+        clean = [r for r in group if not _is_explicit_alternate(r)]
+        if not clean:
+            continue
+
+        book = clean[0]["_book_title"]
+
+        explicitly_main = [r for r in clean if _looks_main_marker(r)]
+        candidates = explicitly_main or clean
+
+        if book in DFS_BOOKS and len(candidates) > 1:
+            # Main DFS projection should have the most balanced effective
+            # higher/lower price. Use distance from the group's median line only
+            # as a deterministic tie-breaker.
+            numeric_lines = sorted(r["_line"] for r in candidates)
+            mid = numeric_lines[len(numeric_lines) // 2]
+            candidates.sort(
+                key=lambda r: (
+                    _dfs_balance_score(r),
+                    abs(r["_line"] - mid),
+                    r["_line"],
+                )
+            )
+            out.append(candidates[0])
+        else:
+            # Sportsbooks normally identify alternates via the market key.
+            # If duplicates remain, choose the most recently updated row.
+            candidates.sort(
+                key=lambda r: str(
+                    r.get("last_update")
+                    or r.get("lastUpdate")
+                    or r.get("snapshot_time")
+                    or ""
+                ),
+                reverse=True,
+            )
+            out.append(candidates[0])
+
     return out
 
 def _consensus_lines(rows):
