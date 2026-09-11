@@ -2,9 +2,8 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NFL Prop Model | Prop Lab</title>
-<link rel="icon" type="image/png" href="/static/beaker-favicon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1">\n<link rel="icon" type="image/png" href="/static/beaker-favicon.png">
+<title>MLB Prop Model | Prop Lab</title>
 <link rel="stylesheet" href="/static/style.css">
 <style>
 .scoreboard-wrap{padding:12px 32px 0}
@@ -444,10 +443,8 @@ main{
 
 
 #refreshBanner{display:none!important}
-
-.nfl-position{display:block;color:var(--muted);font-size:10px;font-weight:600;margin-top:3px}
-.game-card.live .game-status{color:#86efac;font-weight:800}
 </style>
+
 </head>
 <body>
 
@@ -455,8 +452,8 @@ main{
   <a class="site-brand" href="/">PROP LAB</a>
   <div class="site-links">
     <a class="site-link" href="/">HOME</a>
-    <a class="site-link" href="/mlb">MLB</a>
-    <a class="site-link active" href="/nfl">NFL</a>
+    <a class="site-link active" href="/mlb">MLB</a>
+    <a class="site-link" href="/nfl">NFL</a>
     <a class="site-link" href="/nba">NBA</a>
     <a class="site-link" href="/cfb">CFB</a>
     <a class="site-link" href="/performance">PERFORMANCE</a>
@@ -465,20 +462,19 @@ main{
 
 <header>
   <div>
-    <h1>NFL Prop Board</h1>
+    <h1>MLB Prop Board</h1>
     <p>PrizePicks · Underdog · Fliff · Kalshi</p>
   </div>
   <div class="actions">
-    <form method="post" action="/nfl/refresh" id="refreshForm">
+    <form method="post" action="/mlb/refresh" id="refreshForm">
       <button id="refreshButton">Refresh now</button>
     </form>
   </div>
 </header>
-
 <section class="scoreboard-wrap">
   <div class="scoreboard-head">
-    <h2>NFL Games</h2>
-    <span id="scoreboardUpdated">Current week</span>
+    <h2>Today's MLB Games</h2>
+    <span id="scoreboardUpdated">Loading live scores…</span>
   </div>
   <div id="scoreboardStrip" class="scoreboard-strip">
     <div class="game-card"><div class="game-status">Loading games…</div></div>
@@ -490,18 +486,24 @@ main{
   <span id="snapshotFreshnessBannerText">Press Refresh now before using these lines.</span>
 </div>
 
+<div id="refreshBanner" style="display:none;margin:16px 32px 0;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--panel);">
+  <strong id="refreshTitle">Refreshing data…</strong>
+  <span id="refreshDetail" style="margin-left:8px;color:var(--muted)">You can keep using the dashboard while this runs.</span>
+</div>
+
 {% set ns=namespace(pp=0,ud=0,fl=0,ka=0,over=0,under=0,visible=0) %}
 {% for r in rows %}
-  {% if r.verdict not in ['NO ACTION','NEEDS DATA'] %}
-    {% set ns.visible=ns.visible+1 %}
-    {% if r.bookmaker_title in ['PrizePicks','PrizePicks Fantasy'] %}{% set ns.pp=ns.pp+1 %}{% endif %}
-    {% if r.bookmaker_title in ['Underdog','Underdog Fantasy'] %}{% set ns.ud=ns.ud+1 %}{% endif %}
-    {% if r.bookmaker_title=='Fliff' %}{% set ns.fl=ns.fl+1 %}{% endif %}
-    {% if r.bookmaker_title=='Kalshi' %}{% set ns.ka=ns.ka+1 %}{% endif %}
-    {% if r.verdict=='GOOD' and r.recommended_side=='OVER' %}{% set ns.over=ns.over+1 %}{% endif %}
-    {% if r.verdict=='GOOD' and r.recommended_side=='UNDER' %}{% set ns.under=ns.under+1 %}{% endif %}
-  {% endif %}
+{% if r.verdict not in ['NO ACTION','NEEDS DATA'] %}
+{% set ns.visible=ns.visible+1 %}
+{% if r.bookmaker_title=='PrizePicks' %}{% set ns.pp=ns.pp+1 %}{% endif %}
+{% if r.bookmaker_title=='Underdog' %}{% set ns.ud=ns.ud+1 %}{% endif %}
+{% if r.bookmaker_title=='Fliff' %}{% set ns.fl=ns.fl+1 %}{% endif %}
+{% if r.bookmaker_title=='Kalshi' %}{% set ns.ka=ns.ka+1 %}{% endif %}
+{% if (r.verdict=='GOOD' or (r.verdict=='PROVISIONAL' and r.grade in ['A','B'])) and r.recommended_side=='OVER' %}{% set ns.over=ns.over+1 %}{% endif %}
+{% if (r.verdict=='GOOD' or (r.verdict=='PROVISIONAL' and r.grade in ['A','B'])) and r.recommended_side=='UNDER' %}{% set ns.under=ns.under+1 %}{% endif %}
+{% endif %}
 {% endfor %}
+
 
 <section class="dashboard-summary">
   <div class="summary-panel">
@@ -515,16 +517,28 @@ main{
         </div>
       </div>
     </div>
-    <div class="summary-stat"><div class="summary-label">ACTIONABLE PROPS</div><div class="summary-number">{{ ns.visible }}</div></div>
-    <div class="summary-stat"><div class="summary-label">GOOD OVERS</div><div class="summary-number">{{ ns.over }}</div></div>
-    <div class="summary-stat"><div class="summary-label">GOOD UNDERS</div><div class="summary-number">{{ ns.under }}</div></div>
+
+    <div class="summary-stat">
+      <div class="summary-label">ACTIONABLE PROPS</div>
+      <div class="summary-number">{{ ns.visible }}</div>
+    </div>
+
+    <div class="summary-stat">
+      <div class="summary-label">GOOD OVERS</div>
+      <div class="summary-number">{{ ns.over }}</div>
+    </div>
+
+    <div class="summary-stat">
+      <div class="summary-label">GOOD UNDERS</div>
+      <div class="summary-number">{{ ns.under }}</div>
+    </div>
   </div>
 
   <div class="book-strip" aria-label="Sportsbook prop counts">
-    <div class="book-chip" data-book-chip="PrizePicks" role="button" tabindex="0"><span>PRIZEPICKS</span><strong>{{ ns.pp }}</strong></div>
-    <div class="book-chip" data-book-chip="Underdog" role="button" tabindex="0"><span>UNDERDOG</span><strong>{{ ns.ud }}</strong></div>
-    <div class="book-chip" data-book-chip="Fliff" role="button" tabindex="0"><span>FLIFF</span><strong>{{ ns.fl }}</strong></div>
-    <div class="book-chip" data-book-chip="Kalshi" role="button" tabindex="0"><span>KALSHI</span><strong>{{ ns.ka }}</strong></div>
+    <div class="book-chip" data-book-chip="PrizePicks" role="button" tabindex="0" aria-label="Show PrizePicks props"><span>PRIZEPICKS</span><strong>{{ ns.pp }}</strong></div>
+    <div class="book-chip" data-book-chip="Underdog" role="button" tabindex="0" aria-label="Show Underdog props"><span>UNDERDOG</span><strong>{{ ns.ud }}</strong></div>
+    <div class="book-chip" data-book-chip="Fliff" role="button" tabindex="0" aria-label="Show Fliff props"><span>FLIFF</span><strong>{{ ns.fl }}</strong></div>
+    <div class="book-chip" data-book-chip="Kalshi" role="button" tabindex="0" aria-label="Show Kalshi markets"><span>KALSHI</span><strong>{{ kalshi_rows|length }}</strong></div>
   </div>
 </section>
 
@@ -533,7 +547,7 @@ main{
   <summary data-default="All verdicts">All verdicts</summary>
   <div class="multi-menu">
     <label><input type="checkbox" value="GOOD"> GOOD</label>
-    <label><input type="checkbox" value="BORDERLINE"> BORDERLINE</label>
+    <label><input type="checkbox" value="PROVISIONAL"> PROVISIONAL</label>
     <label><input type="checkbox" value="WATCH"> WATCH</label>
     <label><input type="checkbox" value="PASS"> PASS</label>
     <div class="filter-actions"><button type="button" class="filter-clear">Clear</button></div>
@@ -553,13 +567,14 @@ main{
     <label><input type="checkbox" value="PrizePicks"> PrizePicks</label>
     <label><input type="checkbox" value="Underdog"> Underdog</label>
     <label><input type="checkbox" value="Fliff"> Fliff</label>
-    <label><input type="checkbox" value="Kalshi"> Kalshi</label>
     <div class="filter-actions"><button type="button" class="filter-clear">Clear</button></div>
   </div>
 </details>
 <details class="multi-filter" id="gameFilter">
   <summary data-default="All games">All games</summary>
-  <div class="multi-menu" id="gameFilterMenu"><div class="filter-actions"><button type="button" class="filter-clear">Clear</button></div></div>
+  <div class="multi-menu" id="gameFilterMenu">
+    <div class="filter-actions"><button type="button" class="filter-clear">Clear</button></div>
+  </div>
 </details>
 <select id="sortFilter">
   <option value="default">Default ranking</option>
@@ -570,71 +585,145 @@ main{
   <option value="price_asc">Price: low → high</option>
   <option value="model_desc">Model: high → low</option>
 </select>
-<input id="search" placeholder="Search player, market, opponent or team">
+<input id="search" placeholder="Search player, market, opponent or pitcher">
 </section>
 
+
 <section class="mlb-performance-summary">
-  {% macro nfl_perf_pct(s) -%}{% if s.hit_rate is not none %}{{ "%.1f"|format(s.hit_rate*100) }}%{% else %}—{% endif %}{%- endmacro %}
-  <div class="mlb-perf-intro"><div class="mlb-perf-kicker">TRACK RECORD</div><div class="mlb-perf-title">NFL Model Performance</div></div>
-  <div class="mlb-perf-stat"><div class="mlb-perf-label">A + B</div><div class="mlb-perf-value">{{ nfl_perf_pct(performance.overall) }}</div><div class="mlb-perf-meta">{{ performance.overall.wins }}–{{ performance.overall.losses }}</div></div>
-  <div class="mlb-perf-stat"><div class="mlb-perf-label">A Grade</div><div class="mlb-perf-value">{{ nfl_perf_pct(performance.grade_a) }}</div><div class="mlb-perf-meta">{{ performance.grade_a.graded }} decisions</div></div>
-  <div class="mlb-perf-stat"><div class="mlb-perf-label">B Grade</div><div class="mlb-perf-value">{{ nfl_perf_pct(performance.grade_b) }}</div><div class="mlb-perf-meta">{{ performance.grade_b.graded }} decisions</div></div>
-  <div class="mlb-perf-stat"><div class="mlb-perf-label">Last 7D</div><div class="mlb-perf-value">{{ nfl_perf_pct(performance.last_7) }}</div><div class="mlb-perf-meta">{{ performance.last_7.wins }}–{{ performance.last_7.losses }}</div></div>
-  <div class="mlb-perf-link-wrap"><a class="mlb-perf-link" href="/performance?sport=nfl">View full performance →</a></div>
+  {% macro mlb_perf_pct(s) -%}
+    {% if s.hit_rate is not none %}{{ "%.1f"|format(s.hit_rate * 100) }}%{% else %}—{% endif %}
+  {%- endmacro %}
+  <div class="mlb-perf-intro">
+    <div class="mlb-perf-kicker">TRACK RECORD</div>
+    <div class="mlb-perf-title">MLB Model Performance</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">A + B</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.overall) }}</div>
+    <div class="mlb-perf-meta">{{ performance.overall.wins }}–{{ performance.overall.losses }}</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">A Grade</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.grade_a) }}</div>
+    <div class="mlb-perf-meta">{{ performance.grade_a.graded }} decisions</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">B Grade</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.grade_b) }}</div>
+    <div class="mlb-perf-meta">{{ performance.grade_b.graded }} decisions</div>
+  </div>
+  <div class="mlb-perf-stat">
+    <div class="mlb-perf-label">Last 7D</div>
+    <div class="mlb-perf-value">{{ mlb_perf_pct(performance.last_7) }}</div>
+    <div class="mlb-perf-meta">{{ performance.last_7.wins }}–{{ performance.last_7.losses }}</div>
+  </div>
+  <div class="mlb-perf-link-wrap">
+    <a class="mlb-perf-link" href="/performance?sport=mlb">View full performance →</a>
+  </div>
 </section>
 
 <main>
 <table id="board">
 <thead><tr>
 <th>Verdict</th><th>Side</th><th>Grade</th><th>Sportsbook</th><th>Player</th><th>Market</th><th>Line</th><th>Price</th>
-<th>Model</th><th>Edge</th><th>EV / ROI</th><th>Edge Type</th><th>Season</th><th>Recent 5</th><th>Prior</th><th>Confidence</th><th>Line Age</th>
-<th>Opponent</th><th>Matchup</th><th>Week</th><th>Note</th>
+<th>Model</th><th>Edge</th><th>EV / ROI</th><th>Edge Type</th><th>Season</th><th>L30</th><th>L10</th><th>Lineup</th><th>Line Age</th>
+<th>Opponent</th><th>Probable Pitcher</th><th>Venue</th><th>Note</th>
 </tr></thead>
 <tbody>
 {% for r in rows %}
 {% if r.verdict not in ['NO ACTION','NEEDS DATA'] %}
+{% set display_verdict = 'WATCH' if r.verdict in ['BORDERLINE','WAIT'] else r.verdict %}
 <tr
- data-verdict="{{ r.verdict }}"
- data-side="{{ r.recommended_side or '' }}"
- data-book="{{ r.bookmaker_title }}"
- data-book-normalized="{% if r.bookmaker_title in ['PrizePicks','PrizePicks Fantasy'] %}PrizePicks{% elif r.bookmaker_title in ['Underdog','Underdog Fantasy'] %}Underdog{% else %}{{ r.bookmaker_title }}{% endif %}"
- data-game="{{ (r.away_team or '') ~ ' @ ' ~ (r.home_team or '') }}"
- data-edge="{{ r.display_edge if r.display_edge is not none else '' }}"
- data-model="{{ r.recommended_prob if r.recommended_prob is not none else '' }}"
- data-price="{% if r.recommended_side=='UNDER' %}{{ r.under_price if r.under_price is not none else '' }}{% else %}{{ r.over_price if r.over_price is not none else '' }}{% endif %}"
- data-edge-type="{{ r.edge_type or '' }}">
-<td><span class="pill {{ r.verdict|lower|replace(' ','-') }}">{{ r.verdict }}</span></td>
+data-verdict="{{ display_verdict }}"
+data-side="{{ r.recommended_side or '' }}"
+data-book="{{ r.bookmaker_title }}"
+data-game="{{ (r.away_team or '') ~ ' @ ' ~ (r.home_team or '') }}"
+data-edge="{{ r.display_edge if r.display_edge is not none else '' }}"
+data-model="{{ r.recommended_prob if r.recommended_prob is not none else '' }}"
+data-price="{% if r.recommended_side=='UNDER' %}{{ r.under_price if r.under_price is not none else '' }}{% else %}{{ r.over_price if r.over_price is not none else '' }}{% endif %}"
+data-edge-type="{{ r.edge_type or '' }}"
+>
+<td><span class="pill {{ display_verdict|lower|replace(' ','-') }}">{{ display_verdict }}</span></td>
 <td>{% if r.recommended_side %}<span class="side {{ r.recommended_side|lower }}">{{ r.recommended_side }}</span>{% else %}—{% endif %}</td>
-<td>{{ r.grade or '—' }}</td>
-<td>{% if 'underdog' in (r.bookmaker_title or '')|lower %}Underdog{% elif 'prizepicks' in (r.bookmaker_title or '')|lower %}PrizePicks{% else %}{{ r.bookmaker_title }}{% endif %}</td>
-<td class="player"><div class="player-wrap">
-  {% if r.headshot_url %}<img class="player-headshot" loading="lazy" src="{{ r.headshot_url }}" alt="{{ r.player }}" onerror="this.remove();this.nextElementSibling.style.display='flex'"> <span class="player-headshot-fallback" style="display:none">{{ (r.player or '?')[:1] }}</span>
-  {% else %}<span class="player-headshot-fallback">{{ (r.player or '?')[:1] }}</span>{% endif %}
-  <span><span class="player-name">{{ r.player }}</span><span class="nfl-position">{{ r.position or '' }}{% if r.player_team %} · {{ r.player_team }}{% endif %}</span></span>
-</div></td>
+<td>{{ r.grade }}</td>
+<td>{{ r.bookmaker_title }}</td>
+<td class="player">
+  <div class="player-wrap">
+    {% if r.mlb_player_id %}
+    <img class="player-headshot"
+         loading="lazy"
+         src="https://img.mlbstatic.com/mlb-photos/image/upload/f_png,w_96,h_96,c_fit,q_auto:best/v1/people/{{ r.mlb_player_id }}/headshot/silo/current"
+         alt="{{ r.player }}"
+         onerror="this.remove();this.nextElementSibling.style.display='flex'">
+    <span class="player-headshot-fallback" style="display:none">{{ (r.player or '?')[:1] }}</span>
+    {% else %}
+    <span class="player-headshot-fallback">{{ (r.player or '?')[:1] }}</span>
+    {% endif %}
+    <span class="player-name">{{ r.player }}</span>
+  </div>
+</td>
 <td>{{ r.market }}</td>
 <td>{{ r.line }}</td>
-<td>{% if r.recommended_side=='UNDER' %}{{ r.under_price if r.under_price is not none else '—' }}{% else %}{{ r.over_price if r.over_price is not none else '—' }}{% endif %}</td>
-<td>{{ "%.1f%%"|format(r.recommended_prob*100) if r.recommended_prob is not none else '—' }}</td>
-<td class="{{ 'positive' if r.display_edge is not none and r.display_edge>=0.05 else '' }}">{{ "%+.1f%%"|format(r.display_edge*100) if r.display_edge is not none else '—' }}</td>
+<td>{% if r.recommended_side=='UNDER' %}{{ r.under_price if r.under_price is not none else "—" }}{% else %}{{ r.over_price if r.over_price is not none else "—" }}{% endif %}</td>
+<td>{{ "%.1f%%"|format(r.recommended_prob*100) if r.recommended_prob is not none else "—" }}</td>
+<td class="{{ 'positive' if r.display_edge is not none and r.display_edge>=0.05 else '' }}">{{ "%+.1f%%"|format(r.display_edge*100) if r.display_edge is not none else "—" }}</td>
 <td class="ev-cell">—</td>
-<td>{{ r.edge_type or '—' }}</td>
-<td>{{ "%.1f%%"|format(r.season_rate*100) if r.season_rate is not none else '—' }}</td>
-<td>{{ "%.1f%%"|format(r.recent5_rate*100) if r.recent5_rate is not none else '—' }}</td>
-<td>{{ "%.1f%%"|format(r.prior_rate*100) if r.prior_rate is not none else '—' }}</td>
-<td>{{ "%.0f%%"|format(r.confidence_score*100) if r.confidence_score is not none else '—' }}</td>
-<td>{{ "%.0fs"|format(r.line_age_seconds) if r.line_age_seconds is not none else '—' }}</td>
-<td>{{ r.opponent or '—' }}</td>
-<td>{{ (r.away_team or '—') ~ ' @ ' ~ (r.home_team or '—') }}</td>
-<td>{{ r.week or '—' }}</td>
-<td class="note">{{ r.status_note or '' }}</td>
+<td>{{ r.edge_type or "—" }}</td>
+<td>{{ "%.1f%%"|format(r.season_rate*100) if r.season_rate is not none else "—" }}</td>
+<td>{{ "%.1f%%"|format(r.l30_rate*100) if r.l30_rate is not none else "—" }}</td>
+<td>{{ "%.1f%%"|format(r.l10_rate*100) if r.l10_rate is not none else "—" }}</td>
+<td>{{ r.lineup_status or "—" }}</td>
+<td>{{ "%.0fs"|format(r.line_age_seconds) if r.line_age_seconds is not none else "—" }}</td>
+<td>{{ r.opponent or "—" }}</td>
+<td>{{ r.probable_pitcher or "—" }}</td>
+<td>{{ r.venue or "—" }}</td>
+<td class="note">{{ r.status_note or "" }}</td>
 </tr>
 {% endif %}
 {% endfor %}
-{% if not rows %}<tr><td colspan="21" class="note">No NFL model data yet. Click <b>Refresh now</b>.</td></tr>{% endif %}
 </tbody>
 </table>
 </main>
+
+
+<section class="kalshi-section" style="padding:0 32px 40px;">
+  <div style="display:flex;justify-content:space-between;align-items:end;margin:24px 0 12px;">
+    <div>
+      <h2 style="margin:0 0 4px;">Kalshi MLB Markets</h2>
+      <p style="margin:0;color:var(--muted);">Binary YES/NO prediction-market contracts, sorted by 24-hour volume.</p>
+    </div>
+    <span style="color:var(--muted);font-size:13px;">{{ kalshi_rows|length }} contracts</span>
+  </div>
+
+  {% if kalshi_rows %}
+  <div style="overflow:auto;">
+    <table id="kalshiBoard">
+      <thead><tr>
+        <th>Selection</th><th>Matchup</th><th>YES Price</th><th>NO Price</th>
+        <th>YES Prob</th><th>NO Prob</th><th>24h Volume</th><th>Start</th>
+      </tr></thead>
+      <tbody>
+      {% for k in kalshi_rows %}
+        <tr>
+          <td class="player">{{ k.selection or "—" }}</td>
+          <td>{{ (k.away_team or "—") ~ " @ " ~ (k.home_team or "—") }}</td>
+          <td>{{ k.yes_price if k.yes_price is not none else "—" }}</td>
+          <td>{{ k.no_price if k.no_price is not none else "—" }}</td>
+          <td>{{ "%.1f%%"|format(k.yes_implied_prob*100) if k.yes_implied_prob is not none else "—" }}</td>
+          <td>{{ "%.1f%%"|format(k.no_implied_prob*100) if k.no_implied_prob is not none else "—" }}</td>
+          <td>${{ "{:,.0f}".format(k.volume_24h_usd) if k.volume_24h_usd is not none else "—" }}</td>
+          <td>{{ k.commence_time or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="explain" style="margin:0;">
+    No Kalshi MLB contracts are stored yet. Click <b>Refresh now</b> after this patch is deployed.
+  </div>
+  {% endif %}
+</section>
 
 <script>
 const v=document.getElementById('verdictFilter');
@@ -644,50 +733,207 @@ const gf=document.getElementById('gameFilter');
 const sort=document.getElementById('sortFilter');
 const s=document.getElementById('search');
 
-function selectedValues(container){return new Set([...container.querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.value));}
-function refreshFilterLabel(container){const summary=container.querySelector('summary');const values=[...selectedValues(container)];const fallback=summary.dataset.default||'All';summary.textContent=!values.length?fallback:(values.length===1?values[0]:`${values.length} selected`);}
+function selectedValues(container){
+  return new Set([...container.querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.value));
+}
+function refreshFilterLabel(container){
+  const summary=container.querySelector('summary');
+  const values=[...selectedValues(container)];
+  const fallback=summary.dataset.default||'All';
+  if(!values.length) summary.textContent=fallback;
+  else if(values.length===1) summary.textContent=values[0];
+  else summary.textContent=`${values.length} selected`;
+}
 function filterRows(){
-  const verdicts=selectedValues(v), sides=selectedValues(sd), books=selectedValues(b), games=selectedValues(gf), q=s.value.toLowerCase().trim();
-  document.querySelectorAll('#board tbody tr[data-verdict]').forEach(tr=>{
-    tr.style.display=(!verdicts.size||verdicts.has(tr.dataset.verdict))&&(!sides.size||sides.has(tr.dataset.side))&&(!books.size||books.has(tr.dataset.bookNormalized))&&(!games.size||games.has(tr.dataset.game))&&(!q||tr.textContent.toLowerCase().includes(q))?'':'none';
+  const verdicts=selectedValues(v);
+  const sides=selectedValues(sd);
+  const books=selectedValues(b);
+  const games=selectedValues(gf);
+  const q=s.value.toLowerCase().trim();
+  document.querySelectorAll('#board tbody tr').forEach(tr=>{
+    tr.style.display=
+      (!verdicts.size||verdicts.has(tr.dataset.verdict)) &&
+      (!sides.size||sides.has(tr.dataset.side)) &&
+      (!books.size||books.has(tr.dataset.book)) &&
+      (!games.size||games.has(tr.dataset.game)) &&
+      (!q||tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
 [v,sd,b,gf].forEach(container=>{
-  container.addEventListener('change',()=>{refreshFilterLabel(container);if(container===b)syncBookChips();filterRows();});
-  const clear=container.querySelector('.filter-clear');if(clear)clear.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();container.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=false);refreshFilterLabel(container);if(container===b)syncBookChips();filterRows();});
+  container.addEventListener('change',()=>{
+    refreshFilterLabel(container);
+    if(container===b) syncBookChips();
+    filterRows();
+  });
+  const clear=container.querySelector('.filter-clear');
+  if(clear){
+    clear.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      container.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=false);
+      refreshFilterLabel(container);
+      if(container===b) syncBookChips();
+      filterRows();
+    });
+  }
 });
-s.addEventListener('input',filterRows);sort.addEventListener('input',applySort);
-document.querySelectorAll('.multi-filter').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)document.querySelectorAll('.multi-filter').forEach(o=>{if(o!==d)o.removeAttribute('open')})}));
-document.addEventListener('click',e=>document.querySelectorAll('.multi-filter[open]').forEach(d=>{if(!d.contains(e.target))d.removeAttribute('open')}));
+s.addEventListener('input',filterRows);
+sort.addEventListener('input', applySort);
 
-function syncBookChips(){const selected=selectedValues(b);document.querySelectorAll('[data-book-chip]').forEach(chip=>chip.classList.toggle('active',selected.size===1&&selected.has(chip.dataset.bookChip)));}
-function activateBookChip(name){const boxes=[...b.querySelectorAll('input[type="checkbox"]')];const alreadyOnly=boxes.filter(x=>x.checked).length===1&&boxes.some(x=>x.checked&&x.value===name);boxes.forEach(x=>x.checked=alreadyOnly?false:x.value===name);refreshFilterLabel(b);syncBookChips();filterRows();}
-document.querySelectorAll('[data-book-chip]').forEach(chip=>{chip.addEventListener('click',()=>activateBookChip(chip.dataset.bookChip));chip.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activateBookChip(chip.dataset.bookChip)}})});
+// Keep only one filter popover open at a time.
+document.querySelectorAll('.multi-filter').forEach(d=>{
+  d.addEventListener('toggle',()=>{
+    if(d.open){
+      document.querySelectorAll('.multi-filter').forEach(other=>{
+        if(other!==d) other.removeAttribute('open');
+      });
+    }
+  });
+});
 
-function americanProfitPerDollar(price){const p=Number(price);if(!Number.isFinite(p)||p===0)return null;return p>0?p/100:100/Math.abs(p);}
-function expectedROI(row){if((row.dataset.edgeType||'').toUpperCase()!=='TRUE EDGE')return null;const model=Number(row.dataset.model),price=Number(row.dataset.price);if(!Number.isFinite(model)||!Number.isFinite(price))return null;const profit=americanProfitPerDollar(price);return profit===null?null:model*profit-(1-model);}
-function populateEV(){document.querySelectorAll('#board tbody tr[data-verdict]').forEach(row=>{const cell=row.querySelector('.ev-cell');const ev=expectedROI(row);row.dataset.ev=ev===null?'':String(ev);if(!cell)return;cell.textContent=ev===null?'—':(ev>=0?'+':'')+(ev*100).toFixed(1)+'%';cell.classList.toggle('positive',ev!==null&&ev>=.05);});}
-function numOrFallback(v,f){const n=Number(v);return Number.isFinite(n)?n:f;}
-function applySort(){const tbody=document.querySelector('#board tbody'),rows=[...tbody.querySelectorAll('tr[data-verdict]')],mode=sort.value;if(mode==='default')rows.sort((a,b)=>+a.dataset.originalIndex-+b.dataset.originalIndex);else if(mode==='roi_desc')rows.sort((a,b)=>numOrFallback(b.dataset.ev,-Infinity)-numOrFallback(a.dataset.ev,-Infinity));else if(mode==='edge_desc')rows.sort((a,b)=>numOrFallback(b.dataset.edge,-Infinity)-numOrFallback(a.dataset.edge,-Infinity));else if(mode==='edge_asc')rows.sort((a,b)=>numOrFallback(a.dataset.edge,Infinity)-numOrFallback(b.dataset.edge,Infinity));else if(mode==='price_desc')rows.sort((a,b)=>numOrFallback(b.dataset.price,-Infinity)-numOrFallback(a.dataset.price,-Infinity));else if(mode==='price_asc')rows.sort((a,b)=>numOrFallback(a.dataset.price,Infinity)-numOrFallback(b.dataset.price,Infinity));else if(mode==='model_desc')rows.sort((a,b)=>numOrFallback(b.dataset.model,-Infinity)-numOrFallback(a.dataset.model,-Infinity));rows.forEach(r=>tbody.appendChild(r));filterRows();}
-document.querySelectorAll('#board tbody tr[data-verdict]').forEach((row,i)=>row.dataset.originalIndex=String(i));populateEV();
+// Close any open filter dropdown when clicking anywhere outside it.
+document.addEventListener('click',e=>{
+  document.querySelectorAll('.multi-filter[open]').forEach(d=>{
+    if(!d.contains(e.target)){
+      d.removeAttribute('open');
+    }
+  });
+});
 
-function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function renderScoreboard(games){
-  const strip=document.getElementById('scoreboardStrip');
-  if(!games||!games.length){strip.innerHTML='<div class="game-card"><div class="game-status">No NFL games found.</div></div>';return;}
-  strip.innerHTML=games.map(g=>{
-    const state=g.status==='in'?'live':(g.status==='post'?'final':'scheduled');
-    const team=t=>`<div class="team-line"><img class="team-logo" src="${esc(t.logo||'')}" onerror="this.style.visibility='hidden'"><div class="team-name">${esc(t.abbr||t.name||'')} <span class="team-record">${esc(t.record||'')}</span></div><div class="team-score">${state==='scheduled'?'–':esc(t.score??'')}</div></div>`;
-    return `<div class="game-card ${state}"><div class="game-status">${esc(g.status_detail||g.status||'Scheduled')}</div>${team(g.away||{})}${team(g.home||{})}<div class="game-footer">${g.week?'Week '+esc(g.week):''}</div></div>`;
-  }).join('');
+
+function syncBookChips(){
+  const selected=selectedValues(b);
+  document.querySelectorAll('[data-book-chip]').forEach(chip=>{
+    const name=chip.dataset.bookChip;
+    chip.classList.toggle('active', selected.size===1 && selected.has(name));
+  });
 }
-async function loadScoreboard(){try{const r=await fetch('/api/nfl/scoreboard',{cache:'no-store'}),j=await r.json();renderScoreboard(j.games||[]);}catch(e){document.getElementById('scoreboardStrip').innerHTML='<div class="game-card"><div class="game-status">Scoreboard unavailable.</div></div>';}}
+function activateBookChip(name){
+  if(name==='Kalshi'){
+    const section=document.querySelector('.kalshi-section');
+    if(section) section.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
+  const checkboxes=[...b.querySelectorAll('input[type="checkbox"]')];
+  const alreadyOnly=
+    checkboxes.filter(x=>x.checked).length===1 &&
+    checkboxes.some(x=>x.checked && x.value===name);
 
-function buildGameFilter(){
+  checkboxes.forEach(x=>{ x.checked = alreadyOnly ? false : x.value===name; });
+  refreshFilterLabel(b);
+  syncBookChips();
+  filterRows();
+}
+document.querySelectorAll('[data-book-chip]').forEach(chip=>{
+  chip.addEventListener('click',()=>activateBookChip(chip.dataset.bookChip));
+  chip.addEventListener('keydown',e=>{
+    if(e.key==='Enter' || e.key===' '){
+      e.preventDefault();
+      activateBookChip(chip.dataset.bookChip);
+    }
+  });
+});
+
+
+
+function americanProfitPerDollar(price){
+  const p=Number(price);
+  if(!Number.isFinite(p) || p===0) return null;
+  return p>0 ? p/100 : 100/Math.abs(p);
+}
+
+function expectedROI(row){
+  if((row.dataset.edgeType||'').toUpperCase()!=='TRUE EDGE') return null;
+  const model=Number(row.dataset.model);
+  const price=Number(row.dataset.price);
+  if(!Number.isFinite(model) || !Number.isFinite(price)) return null;
+  const profit=americanProfitPerDollar(price);
+  if(profit===null) return null;
+  return model*profit - (1-model);
+}
+
+function populateEV(){
+  document.querySelectorAll('#board tbody tr').forEach(row=>{
+    const cell=row.querySelector('.ev-cell');
+    if(!cell) return;
+    const ev=expectedROI(row);
+    row.dataset.ev = ev===null ? '' : String(ev);
+    if(ev===null){
+      cell.textContent='—';
+      cell.classList.remove('positive');
+    }else{
+      cell.textContent=(ev>=0?'+':'')+(ev*100).toFixed(1)+'%';
+      if(ev>=0.05) cell.classList.add('positive');
+      else cell.classList.remove('positive');
+    }
+  });
+}
+
+function numOrFallback(v, fallback){
+  const n=Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function applySort(){
+  const tbody=document.querySelector('#board tbody');
+  const rows=[...tbody.querySelectorAll('tr')];
+  const mode=sort.value;
+
+  if(mode==='default'){
+    rows.sort((a,b)=>Number(a.dataset.originalIndex)-Number(b.dataset.originalIndex));
+  }else if(mode==='roi_desc'){
+    rows.sort((a,b)=>numOrFallback(b.dataset.ev,-Infinity)-numOrFallback(a.dataset.ev,-Infinity));
+  }else if(mode==='edge_desc'){
+    rows.sort((a,b)=>numOrFallback(b.dataset.edge,-Infinity)-numOrFallback(a.dataset.edge,-Infinity));
+  }else if(mode==='edge_asc'){
+    rows.sort((a,b)=>numOrFallback(a.dataset.edge,Infinity)-numOrFallback(b.dataset.edge,Infinity));
+  }else if(mode==='price_desc'){
+    rows.sort((a,b)=>numOrFallback(b.dataset.price,-Infinity)-numOrFallback(a.dataset.price,-Infinity));
+  }else if(mode==='price_asc'){
+    rows.sort((a,b)=>numOrFallback(a.dataset.price,Infinity)-numOrFallback(b.dataset.price,Infinity));
+  }else if(mode==='model_desc'){
+    rows.sort((a,b)=>numOrFallback(b.dataset.model,-Infinity)-numOrFallback(a.dataset.model,-Infinity));
+  }
+
+  rows.forEach(r=>tbody.appendChild(r));
+  filterRows();
+}
+
+document.querySelectorAll('#board tbody tr').forEach((row,i)=>{
+  row.dataset.originalIndex=String(i);
+});
+populateEV();
+
+async function buildGameFilter(){
   const menu=document.getElementById('gameFilterMenu');
   const actions=menu.querySelector('.filter-actions');
-  [...new Set([...document.querySelectorAll('#board tbody tr[data-game]')].map(r=>r.dataset.game).filter(Boolean))].sort().forEach(game=>{const label=document.createElement('label');label.innerHTML=`<input type="checkbox" value="${esc(game)}"> ${esc(game)}`;menu.insertBefore(label,actions);});
+
+  try{
+    // /api/scoreboard is already scoped to TODAY in Eastern Time.
+    const r=await fetch('/api/mlb/scoreboard',{cache:'no-store'});
+    const data=await r.json();
+
+    const games=(data.games||[])
+      .map(g=>`${g.away_team||''} @ ${g.home_team||''}`)
+      .filter(game=>game && game.trim()!=='@')
+      .sort();
+
+    [...new Set(games)].forEach(game=>{
+      const label=document.createElement('label');
+      const input=document.createElement('input');
+      input.type='checkbox';
+      input.value=game;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' '+game));
+      menu.insertBefore(label,actions);
+    });
+  }catch(e){
+    // Keep All games if live scoreboard data is temporarily unavailable.
+  }
 }
+buildGameFilter();
+
+
 
 const snapshotHost=document.querySelector('[data-snapshot]');
 const snapshotRaw=snapshotHost ? snapshotHost.dataset.snapshot : '';
@@ -695,21 +941,19 @@ const snapshotHealth=document.getElementById('snapshotHealth');
 const snapshotHealthText=document.getElementById('snapshotHealthText');
 const freshnessBanner=document.getElementById('snapshotFreshnessBanner');
 const freshnessBannerText=document.getElementById('snapshotFreshnessBannerText');
-const refreshButton=document.getElementById('refreshButton');
 
 function formatAge(ms){
   const mins=Math.max(0,Math.floor(ms/60000));
   if(mins<1) return 'just now';
   if(mins<60) return `${mins}m old`;
-  const hrs=Math.floor(mins/60), rem=mins%60;
+  const hrs=Math.floor(mins/60);
+  const rem=mins%60;
   if(hrs<24) return rem ? `${hrs}h ${rem}m old` : `${hrs}h old`;
   const days=Math.floor(hrs/24);
   return `${days}d ${hrs%24}h old`;
 }
-
 function updateSnapshotFreshness(){
   snapshotHealth.classList.remove('fresh','aging','stale','empty');
-
   if(!snapshotRaw){
     snapshotHealth.classList.add('empty');
     snapshotHealthText.textContent='No saved props yet';
@@ -717,19 +961,14 @@ function updateSnapshotFreshness(){
     freshnessBannerText.textContent=' Run Refresh now to create the first saved board.';
     return;
   }
-
   const dt=new Date(snapshotRaw);
   if(Number.isNaN(dt.getTime())){
     snapshotHealth.classList.add('empty');
     snapshotHealthText.textContent='Age unavailable';
-    freshnessBanner.style.display='none';
     return;
   }
-
   const age=Date.now()-dt.getTime();
   const mins=age/60000;
-
-  // Match MLB exactly: <10m fresh, 10–30m aging, 30m+ stale.
   if(mins<10){
     snapshotHealth.classList.add('fresh');
     snapshotHealthText.textContent=`FRESH · ${formatAge(age)}`;
@@ -745,61 +984,122 @@ function updateSnapshotFreshness(){
     freshnessBannerText.textContent=` These props are ${formatAge(age)}. Press Refresh now before using them.`;
   }
 }
+updateSnapshotFreshness();
+setInterval(updateSnapshotFreshness,60000);
 
-let nflWasRefreshing=false;
+const scoreboardStrip=document.getElementById('scoreboardStrip');
+const scoreboardUpdated=document.getElementById('scoreboardUpdated');
+
+function teamRecord(rec){
+  if(!rec || rec.wins===null || rec.wins===undefined) return '';
+  return `<span class="team-record">${rec.wins}-${rec.losses}</span>`;
+}
+function escapeHtml(v){
+  return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function gameStatusLabel(g){
+  const state=(g.abstract_state||'').toLowerCase();
+  if(state==='live'){
+    const inn=[g.inning_state,g.inning].filter(Boolean).join(' ');
+    return inn || g.detailed_state || 'LIVE';
+  }
+  if(state==='final') return g.detailed_state || 'Final';
+  if(g.game_date){
+    try{
+      return new Intl.DateTimeFormat('en-US',{
+        timeZone:'America/New_York',hour:'numeric',minute:'2-digit'
+      }).format(new Date(g.game_date))+' ET';
+    }catch(e){}
+  }
+  return g.detailed_state || 'Scheduled';
+}
+function renderScoreboard(games){
+  if(!games || !games.length){
+    scoreboardStrip.innerHTML='<div class="game-card"><div class="game-status">No MLB games found today.</div></div>';
+    return;
+  }
+  scoreboardStrip.innerHTML=games.map(g=>{
+    const state=(g.abstract_state||'').toLowerCase();
+    const klass=state==='live'?'live':(state==='final'?'final':'scheduled');
+    const notStarted = state==='preview' || state==='scheduled';
+    const homeScore = notStarted ? '–' : (g.home_score ?? 0);
+    const awayScore = notStarted ? '–' : (g.away_score ?? 0);
+    return `
+      <div class="game-card ${klass}">
+        <div class="game-status">${escapeHtml(gameStatusLabel(g))}</div>
+        <div class="team-line">
+          <img class="team-logo" src="${escapeHtml(g.away_logo||'')}" onerror="this.style.visibility='hidden'">
+          <div class="team-name">${escapeHtml(g.away_team||'Away')} ${teamRecord(g.away_record)}</div>
+          <div class="team-score">${escapeHtml(awayScore)}</div>
+        </div>
+        <div class="team-line">
+          <img class="team-logo" src="${escapeHtml(g.home_logo||'')}" onerror="this.style.visibility='hidden'">
+          <div class="team-name">${escapeHtml(g.home_team||'Home')} ${teamRecord(g.home_record)}</div>
+          <div class="team-score">${escapeHtml(homeScore)}</div>
+        </div>
+        <div class="game-footer">${escapeHtml(g.venue||'')}</div>
+      </div>`;
+  }).join('');
+}
+async function updateScoreboard(){
+  try{
+    const r=await fetch('/api/mlb/scoreboard',{cache:'no-store'});
+    const data=await r.json();
+    renderScoreboard(data.games||[]);
+    scoreboardUpdated.textContent='Live scores update automatically';
+  }catch(e){
+    scoreboardUpdated.textContent='Live-score update temporarily unavailable';
+  }
+}
+updateScoreboard();
+setInterval(updateScoreboard,30000);
+
+const banner=document.getElementById('refreshBanner');
+const btn=document.getElementById('refreshButton');
+let wasRunning=false;
 
 function setRefreshingPill(){
   snapshotHealth.classList.remove('aging','stale','empty');
   snapshotHealth.classList.add('fresh');
   snapshotHealthText.textContent='REFRESHING';
   freshnessBanner.style.display='none';
-  if(refreshButton){
-    refreshButton.disabled=true;
-    refreshButton.textContent='Refreshing…';
-  }
+  btn.disabled=true;
+  btn.textContent='Refreshing…';
 }
 
-function setRefreshFailedPill(message){
+function setRefreshFailedPill(){
   snapshotHealth.classList.remove('fresh','aging','stale','empty');
   snapshotHealth.classList.add('stale');
   snapshotHealthText.textContent='REFRESH FAILED';
-  snapshotHealth.title=message||'NFL refresh failed';
-  if(refreshButton){
-    refreshButton.disabled=false;
-    refreshButton.textContent='Refresh now';
-  }
+  btn.disabled=false;
+  btn.textContent='Refresh now';
 }
 
 async function pollRefresh(){
   try{
-    const r=await fetch('/api/nfl/refresh-status',{cache:'no-store'});
-    const j=await r.json();
+    const r=await fetch('/api/mlb/refresh-status',{cache:'no-store'});
+    const st=await r.json();
 
-    if(j.running){
-      nflWasRefreshing=true;
+    if(st.running){
+      wasRunning=true;
       setRefreshingPill();
     }else{
-      if(refreshButton){
-        refreshButton.disabled=false;
-        refreshButton.textContent='Refresh now';
-      }
+      btn.disabled=false;
+      btn.textContent='Refresh now';
 
-      if(j.snapshot && j.snapshot!=="{{ snapshot or '' }}"){
-        location.reload();
-        return;
-      }
-
-      if(nflWasRefreshing){
-        nflWasRefreshing=false;
-        if(j.last_error){
-          setRefreshFailedPill(j.last_error);
+      if(wasRunning){
+        wasRunning=false;
+        if(st.last_error){
+          setRefreshFailedPill();
+          // Once the refresh has failed, restore the age warning underneath
+          // so the user can still see that the saved board is stale.
           setTimeout(updateSnapshotFreshness,1800);
         }else{
           snapshotHealth.classList.remove('aging','stale','empty');
           snapshotHealth.classList.add('fresh');
           snapshotHealthText.textContent='UPDATED';
           freshnessBanner.style.display='none';
-          setTimeout(()=>window.location.href='/nfl',650);
+          setTimeout(()=>window.location.href='/mlb',650);
           return;
         }
       }else{
@@ -807,22 +1107,17 @@ async function pollRefresh(){
       }
     }
   }catch(e){
-    // Keep the saved board usable if one status request fails.
+    // Leave the current dashboard usable if a status poll briefly fails.
   }
   setTimeout(pollRefresh,2500);
 }
 
-updateSnapshotFreshness();
-setInterval(updateSnapshotFreshness,60000);
-
 const qs=new URLSearchParams(window.location.search);
 if(qs.get('refresh')==='started'){
-  nflWasRefreshing=true;
+  wasRunning=true;
   setRefreshingPill();
 }
 pollRefresh();
-
-buildGameFilter();loadScoreboard();pollRefresh();setInterval(loadScoreboard,60000);setInterval(pollRefresh,4000);
 </script>
 </body>
 </html>
