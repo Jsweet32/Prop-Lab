@@ -17,6 +17,7 @@ from .kalshi_store import (
     latest_kalshi_snapshot,
 )
 from .config import TIMEZONE
+from .history import performance_data, grade_pending_history
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -133,6 +134,24 @@ def api_scoreboard():
 @router.get("/api/mlb/board")
 def api_board():
     return {"snapshot": latest_snapshot(), "rows": latest_rows()}
+
+
+@router.get("/mlb/performance", response_class=HTMLResponse)
+def mlb_performance(request: Request):
+    data = performance_data()
+    return templates.TemplateResponse(
+        "mlb/performance.html",
+        {
+            "request": request,
+            **data,
+        },
+    )
+
+
+@router.post("/mlb/performance/grade")
+def grade_performance_now():
+    grade_pending_history()
+    return RedirectResponse("/mlb/performance", status_code=303)
 
 
 @router.get("/mlb/export.xlsx")
