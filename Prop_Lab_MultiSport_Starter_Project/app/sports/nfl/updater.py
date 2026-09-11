@@ -112,7 +112,15 @@ def _implied(row, side):
 
 def refresh_all():
     raw = fetch_props()
+    if not raw:
+        raise RuntimeError("ParlayAPI returned no NFL props.")
+
     rows = _select_main_lines(_normalize_rows(raw))
+    if not rows:
+        raise RuntimeError(
+            "NFL props were returned, but none matched the supported main markets "
+            "or freshness window."
+        )
     consensus = _consensus_lines(rows)
     snapshot = datetime.now(timezone.utc).isoformat()
     modeled = []
@@ -255,6 +263,11 @@ def refresh_all():
             "line_last_update": p.get("last_update") or p.get("snapshot_time"),
             "status_note": status_note,
         })
+
+    if not modeled:
+        raise RuntimeError(
+            "NFL lines loaded, but no players could be matched to usable historical stats yet."
+        )
 
     replace_snapshot(modeled, snapshot)
     try:
