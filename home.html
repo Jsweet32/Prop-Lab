@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prop Lab | Sports Analytics</title>
+<link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+<nav class="topbar">
+  <a class="brand" href="/">PROP LAB</a>
+  <div class="navlinks">
+    <a class="active" href="/">HOME</a>
+    <a href="/mlb">MLB</a>
+    <a href="/nfl">NFL</a>
+    <a href="/nba">NBA</a>
+    <a href="/cfb">CFB</a>
+  </div>
+</nav>
+
+<main class="home-shell">
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">MULTI-SPORT PROP ANALYTICS</div>
+      <h1>One home for every model.</h1>
+      <p>Player prop dashboards built around current lines, recent performance, matchup context and model-based edges.</p>
+
+      <div class="hero-chips" aria-label="Platform features">
+        <span>LIVE LINES</span>
+        <span>MODEL EDGE</span>
+        <span>RECENT FORM</span>
+        <span>GAME CONTEXT</span>
+      </div>
+    </div>
+
+    <div class="hero-visual" aria-hidden="true">
+      <div class="visual-grid"></div>
+
+      <div class="visual-topline">
+        <span>PROP LAB ENGINE</span>
+        <span class="engine-live"><i></i> ACTIVE</span>
+      </div>
+
+      <div class="model-flow">
+        <div class="flow-node">
+          <span class="flow-number">01</span>
+          <strong>LINES</strong>
+          <small>Sportsbook data</small>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <span class="flow-number">02</span>
+          <strong>CONTEXT</strong>
+          <small>Matchup + form</small>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node">
+          <span class="flow-number">03</span>
+          <strong>MODEL</strong>
+          <small>Probability</small>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node accent-node">
+          <span class="flow-number">04</span>
+          <strong>EDGE</strong>
+          <small>Ranked props</small>
+        </div>
+      </div>
+
+      <div class="sport-orbit">
+        <div class="orbit-line"></div>
+        <div class="orbit-ball baseball">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="22"></circle>
+            <path d="M19 16c8 8 8 24 0 32M45 16c-8 8-8 24 0 32"></path>
+            <path d="M20 22l5-2M19 28l6-1M19 36l6 1M20 42l5 2M44 22l-5-2M45 28l-6-1M45 36l-6 1M44 42l-5 2"></path>
+          </svg>
+        </div>
+        <div class="orbit-ball football">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M10 32c8-18 36-18 44 0-8 18-36 18-44 0Z"></path>
+            <path d="M27 24l10 16M24 27l16 10M28 30l8 4M30 27l4 10"></path>
+          </svg>
+        </div>
+        <div class="orbit-ball basketball">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="22"></circle>
+            <path d="M10 32h44M32 10v44M16 18c10 5 22 23 32 28M48 18C38 23 26 41 16 46"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-head">
+    <div>
+      <span class="section-kicker">MODELS</span>
+      <h2>Choose a sport</h2>
+    </div>
+    <span class="section-note">MLB live now · more models coming next</span>
+  </section>
+
+  <section class="sport-grid">
+    <a class="sport-card live" href="/mlb">
+      <div class="sport-top">
+        <div class="sport-logo-wrap mlb-logo-wrap">
+          <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Major_League_Baseball_logo.svg" alt="MLB logo">
+        </div>
+        <span class="status live-status"><i></i> LIVE</span>
+      </div>
+      <h3>MLB Prop Model</h3>
+      <p>PrizePicks, Underdog, Fliff and Kalshi with model probabilities, grades, edge, recent form, lineup context and live game awareness.</p>
+      <div class="card-footer"><span>Open dashboard</span><span>→</span></div>
+      <div class="card-watermark">MLB</div>
+    </a>
+
+    <a class="sport-card" href="/nfl">
+      <div class="sport-top">
+        <div class="sport-logo-wrap nfl-logo-wrap">
+          <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/NFL_wordmark_logo_2008.svg" alt="NFL logo">
+        </div>
+        <span class="status">COMING SOON</span>
+      </div>
+      <h3>NFL Prop Model</h3>
+      <p>Ready for usage, snap share, injuries, weather, opponent context and football-specific prop modeling.</p>
+      <div class="card-footer"><span>View model page</span><span>→</span></div>
+      <div class="card-watermark">NFL</div>
+    </a>
+
+    <a class="sport-card" href="/nba">
+      <div class="sport-top">
+        <div class="sport-logo-wrap nba-logo-wrap">
+          <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/National_Basketball_Association_logo_2017-present.svg" alt="NBA logo">
+        </div>
+        <span class="status">COMING SOON</span>
+      </div>
+      <h3>NBA Prop Model</h3>
+      <p>Built to support minutes, usage, starting lineups, injury effects, pace, opponent matchup and recent performance.</p>
+      <div class="card-footer"><span>View model page</span><span>→</span></div>
+      <div class="card-watermark">NBA</div>
+    </a>
+
+    <a class="sport-card" href="/cfb">
+      <div class="sport-top">
+        <div class="sport-logo-wrap cfb-logo-wrap">
+          <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/NCAA_logo.svg" alt="NCAA logo">
+        </div>
+        <span class="status">COMING SOON</span>
+      </div>
+      <h3>College Football</h3>
+      <p>A dedicated college model slot for player props, team context, availability and matchup-driven analysis.</p>
+      <div class="card-footer"><span>View model page</span><span>→</span></div>
+      <div class="card-watermark">CFB</div>
+    </a>
+  </section>
+
+  <section class="platform-panel">
+    <div>
+      <span class="section-kicker">PLATFORM</span>
+      <h2>Built to expand without rebuilding.</h2>
+    </div>
+
+    <div class="platform-copy">
+      <p>Each sport has its own model, data providers and updater, while the website, navigation and shared infrastructure stay together.</p>
+      <div class="platform-diagram" aria-hidden="true">
+        <span class="diagram-pill active-pill">MLB</span>
+        <span class="diagram-line"></span>
+        <span class="diagram-core">PROP LAB</span>
+        <span class="diagram-line"></span>
+        <span class="diagram-pill">NFL</span>
+        <span class="diagram-pill">NBA</span>
+        <span class="diagram-pill">CFB</span>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
