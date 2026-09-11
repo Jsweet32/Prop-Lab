@@ -2,7 +2,6 @@ import io
 import re
 import time
 import threading
-from copy import deepcopy
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -22,6 +21,9 @@ _lock = threading.RLock()
 _cache = {}
 
 def _cache_get(key, max_age):
+    # These cached objects are treated as read-only. Returning them directly is
+    # intentional: deep-copying full NFL season datasets on every player lookup
+    # made the original refresh take many minutes.
     with _lock:
         item = _cache.get(key)
         if not item:
@@ -29,11 +31,11 @@ def _cache_get(key, max_age):
         ts, value = item
         if time.time() - ts > max_age:
             return None
-        return deepcopy(value)
+        return value
 
 def _cache_set(key, value):
     with _lock:
-        _cache[key] = (time.time(), deepcopy(value))
+        _cache[key] = (time.time(), value)
     return value
 
 def normalize_name(v):
@@ -101,34 +103,72 @@ def fetch_players():
     except Exception:
         return _cache_set(key, [])
 
+
+def _players_by_name():
+    key = ("players_by_name",)
+    cached = _cache_get(key, 12 * 3600)
+    if cached is not None:
+        return cached
+
+    index = {}
+    for p in fetch_players():
+        candidates = [
+            p.get("display_name"),
+            p.get("common_first_name") and f"{p.get('common_first_name')} {p.get('last_name')}",
+            p.get("short_name"),
+            p.get("football_name"),
+        ]
+        for candidate in candidates:
+            n = normalize_name(candidate)
+            if n:
+                index.setdefault(n, p)
+    return _cache_set(key, index)
+
+
+def _stats_by_player(season):
+    season = int(season)
+    key = ("stats_by_player", season)
+    cached = _cache_get(key, NFLVERSE_CACHE_SECONDS)
+    if cached is not None:
+        return cached
+
+    index = {}
+    for r in fetch_player_stats(season):
+        n = normalize_name(r.get("player_display_name") or r.get("player_name"))
+        if n:
+            index.setdefault(n, []).append(r)
+    for rows in index.values():
+        rows.sort(key=lambda x: int(x.get("week") or 0))
+    return _cache_set(key, index)
+
+
 def player_profile(name):
     target = normalize_name(name)
     if not target:
         return {}
-    for p in fetch_players():
-        candidates = [
-            p.get("display_name"), p.get("common_first_name") and f"{p.get('common_first_name')} {p.get('last_name')}",
-            p.get("short_name"), p.get("football_name")
-        ]
-        if any(normalize_name(x) == target for x in candidates if x):
-            return {
-                "player_id": p.get("gsis_id") or p.get("espn_id"),
-                "headshot_url": p.get("headshot") or p.get("headshot_url"),
-                "position": p.get("position") or p.get("position_group"),
-                "player_team": p.get("team_abbr") or p.get("team"),
-            }
-    return {}
+    p = _players_by_name().get(target)
+    if not p:
+        return {}
+    return {
+        "player_id": p.get("gsis_id") or p.get("espn_id"),
+        "headshot_url": p.get("headshot") or p.get("headshot_url"),
+        "position": p.get("position") or p.get("position_group"),
+        "player_team": p.get("team_abbr") or p.get("team"),
+    }
+
 
 def player_history(name, current_season=None):
     current_season = current_season or nfl_season()
     target = normalize_name(name)
-    out = []
-    for season in (current_season - 1, current_season):
-        for r in fetch_player_stats(season):
-            if normalize_name(r.get("player_display_name") or r.get("player_name")) == target:
-                out.append(r)
+    if not target:
+        return []
+
+    prior = _stats_by_player(current_season - 1).get(target, [])
+    current = _stats_by_player(current_season).get(target, [])
+    out = list(prior) + list(current)
     out.sort(key=lambda x: (int(x.get("season") or 0), int(x.get("week") or 0)))
     return out
+
 
 def fetch_scoreboard():
     key = ("scoreboard",)
