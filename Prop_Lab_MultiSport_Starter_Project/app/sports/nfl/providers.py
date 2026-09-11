@@ -165,6 +165,14 @@ def _fetch_underdog_native(markets=None):
     for item in lines:
         if str(item.get("line_type") or "").lower() != "balanced":
             continue
+
+        # A Flash line is a temporary discounted projection. It can still be
+        # tagged "balanced", so line_type alone is not enough to identify the
+        # normal board line.
+        flash_line = item.get("flash_line")
+        if flash_line not in (None, "", False):
+            continue
+
         if item.get("live_event") is True:
             continue
         if str(item.get("status") or "active").lower() not in {"active", "open"}:
@@ -218,6 +226,7 @@ def _fetch_underdog_native(markets=None):
             "age_seconds": 0,
             # Retain native marker for diagnostics and downstream guardrails.
             "line_type": "balanced",
+            "flash_line": item.get("flash_line"),
             "native_line_id": item.get("id"),
         })
     return out
@@ -438,18 +447,19 @@ def _fetch_parlay_underdog(markets=None):
 def fetch_props(markets=None):
     """
     NFL source strategy:
-      - PrizePicks: native standard projections.
-      - Underdog: native balanced lines when available.
-      - If Render cannot reach Underdog's native endpoint, use ParlayAPI as a
-        fallback and let updater.py identify the regular rung by anchoring it to
-        PrizePicks' native STANDARD line for the same player/market.
+
+      - PrizePicks: native STANDARD projections only.
+      - Underdog: native BALANCED, non-Flash projections only.
       - Fliff/Kalshi/etc: ParlayAPI.
+
+    We intentionally DO NOT fall back to ParlayAPI for Underdog. Parlay's flat
+    /props rows do not expose Underdog's native line_type/Flash metadata, so the
+    fallback cannot prove which rung is the regular board line. Returning fewer
+    Underdog rows is preferable to labeling a 0.5/1.5 alternate as the main line.
     """
     rows = _fetch_parlay_non_dfs(markets=markets)
     diagnostics = []
 
-    # PrizePicks first because its native STANDARD line is used as the fallback
-    # anchor for Underdog if the native Underdog endpoint is blocked.
     try:
         pp = _fetch_prizepicks_native(markets=markets)
         rows.extend(pp)
@@ -461,19 +471,21 @@ def fetch_props(markets=None):
         if ud:
             rows.extend(ud)
         else:
-            diagnostics.append("Underdog native feed returned 0 rows; using Parlay fallback.")
-            rows.extend(_fetch_parlay_underdog(markets=markets))
+            diagnostics.append(
+                "Underdog native feed returned 0 verified main lines; "
+                "Underdog omitted rather than using alternate-prone fallback rows."
+            )
     except Exception as exc:
-        diagnostics.append(f"Underdog native feed unavailable: {exc}; using Parlay fallback.")
-        try:
-            rows.extend(_fetch_parlay_underdog(markets=markets))
-        except Exception as fallback_exc:
-            diagnostics.append(f"Underdog fallback unavailable: {fallback_exc}")
+        diagnostics.append(
+            f"Underdog native feed unavailable: {exc}; "
+            "Underdog omitted rather than using alternate-prone fallback rows."
+        )
 
     if diagnostics:
         print(" | ".join(diagnostics))
 
     return rows
+
 
 def _to_records(url):
     r = requests.get(url, timeout=45)
