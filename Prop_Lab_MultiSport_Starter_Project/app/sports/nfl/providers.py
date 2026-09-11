@@ -48,16 +48,325 @@ def nfl_season(now=None):
     # January/February games belong to the season that started the prior fall.
     return now.year if now.month >= 3 else now.year - 1
 
-def fetch_props(markets=None):
+
+_DIRECT_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151 Safari/537.36"
+    ),
+}
+
+_NFL_MARKET_ALIASES = {
+    # Passing
+    "passing yards": "player_pass_yds",
+    "pass yards": "player_pass_yds",
+    "passing_yards": "player_pass_yds",
+    "pass_yards": "player_pass_yds",
+    "passing touchdowns": "player_pass_tds",
+    "passing tds": "player_pass_tds",
+    "pass tds": "player_pass_tds",
+    "passing_touchdowns": "player_pass_tds",
+    "passing_tds": "player_pass_tds",
+    "completions": "player_pass_completions",
+    "pass completions": "player_pass_completions",
+    "passing completions": "player_pass_completions",
+    "passing_completions": "player_pass_completions",
+    "pass attempts": "player_pass_attempts",
+    "passing attempts": "player_pass_attempts",
+    "pass_attempts": "player_pass_attempts",
+    "passing_attempts": "player_pass_attempts",
+    "interceptions": "player_pass_interceptions",
+    "passing interceptions": "player_pass_interceptions",
+    "pass interceptions": "player_pass_interceptions",
+    "passing_interceptions": "player_pass_interceptions",
+    # Rushing
+    "rushing yards": "player_rush_yds",
+    "rush yards": "player_rush_yds",
+    "rushing_yards": "player_rush_yds",
+    "rush_yards": "player_rush_yds",
+    "rushing attempts": "player_rush_attempts",
+    "rush attempts": "player_rush_attempts",
+    "carries": "player_rush_attempts",
+    "rushing_attempts": "player_rush_attempts",
+    "rush_attempts": "player_rush_attempts",
+    "rushing touchdowns": "player_rush_tds",
+    "rushing tds": "player_rush_tds",
+    "rush tds": "player_rush_tds",
+    "rushing_touchdowns": "player_rush_tds",
+    "rushing_tds": "player_rush_tds",
+    # Receiving
+    "receiving yards": "player_reception_yds",
+    "reception yards": "player_reception_yds",
+    "receiving_yards": "player_reception_yds",
+    "reception_yards": "player_reception_yds",
+    "receptions": "player_receptions",
+    "reception": "player_receptions",
+    "receiving receptions": "player_receptions",
+    "receiving touchdowns": "player_reception_tds",
+    "receiving tds": "player_reception_tds",
+    "reception tds": "player_reception_tds",
+    "receiving_touchdowns": "player_reception_tds",
+    "receiving_tds": "player_reception_tds",
+    # TD
+    "anytime touchdown": "player_anytime_td",
+    "anytime td": "player_anytime_td",
+    "touchdowns": "player_anytime_td",
+    "total touchdowns": "player_anytime_td",
+    "total tds": "player_anytime_td",
+}
+
+
+def _market_from_native(stat):
+    s = str(stat or "").strip().lower()
+    s = s.replace("+", " + ")
+    s = re.sub(r"\s+", " ", s)
+    return _NFL_MARKET_ALIASES.get(s)
+
+
+def _price_from_options(options, choice):
+    choice = choice.lower()
+    for opt in options or []:
+        if str(opt.get("choice") or "").lower() == choice:
+            for key in ("american_price", "americanPrice", "price_american"):
+                if opt.get(key) is not None:
+                    try:
+                        return float(opt.get(key))
+                    except Exception:
+                        pass
+    return None
+
+
+def _fetch_underdog_native(markets=None):
+    """
+    Pull Underdog's own board and keep ONLY line_type='balanced'.
+
+    Underdog exposes alternate/special ladders in the same payload. The native
+    line_type field is authoritative; 'balanced' is the regular line the user
+    sees on the standard board.
+    """
+    url = "https://api.underdogfantasy.com/beta/v5/over_under_lines"
+    r = requests.get(url, headers=_DIRECT_HEADERS, timeout=30)
+    r.raise_for_status()
+    payload = r.json()
+
+    # Endpoint has historically returned either the collections at top level or
+    # under a data object. Support both.
+    root = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else payload
+    lines = (root or {}).get("over_under_lines") or []
+    appearances = {str(x.get("id")): x for x in ((root or {}).get("appearances") or [])}
+    players = {str(x.get("id")): x for x in ((root or {}).get("players") or [])}
+    games = {str(x.get("id")): x for x in ((root or {}).get("games") or [])}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    allowed = set(markets or [])
+    out = []
+
+    for item in lines:
+        if str(item.get("line_type") or "").lower() != "balanced":
+            continue
+        if item.get("live_event") is True:
+            continue
+        if str(item.get("status") or "active").lower() not in {"active", "open"}:
+            continue
+
+        ou = item.get("over_under") or {}
+        astat = ou.get("appearance_stat") or {}
+        mk = _market_from_native(astat.get("display_stat") or astat.get("stat"))
+        if not mk or (allowed and mk not in allowed):
+            continue
+
+        app = appearances.get(str(astat.get("appearance_id"))) or {}
+        player = players.get(str(app.get("player_id"))) or {}
+        if str(player.get("sport_id") or "").upper() not in {"NFL", ""}:
+            continue
+
+        name = " ".join(
+            x for x in [player.get("first_name"), player.get("last_name")] if x
+        ).strip() or player.get("name") or player.get("display_name")
+        if not name:
+            continue
+
+        try:
+            line = float(item.get("stat_value"))
+        except Exception:
+            continue
+
+        game = games.get(str(app.get("match_id"))) or {}
+        options = item.get("options") or []
+
+        out.append({
+            "event_id": str(game.get("id") or item.get("id") or ""),
+            "canonical_event_id": str(game.get("id") or item.get("id") or ""),
+            "sport_key": SPORT_KEY,
+            "commence_time": game.get("scheduled_at"),
+            "home_team": game.get("home_team_name") or "",
+            "away_team": game.get("away_team_name") or "",
+            "bookmaker": "underdog",
+            "source": "underdog",
+            "bookmaker_title": "Underdog",
+            "source_title": "Underdog",
+            "player_name": name,
+            "player": name,
+            "market_key": mk,
+            "market_label": astat.get("display_stat") or astat.get("stat") or mk,
+            "line": line,
+            "over_price": _price_from_options(options, "higher"),
+            "under_price": _price_from_options(options, "lower"),
+            "snapshot_time": now_iso,
+            "last_update": now_iso,
+            "age_seconds": 0,
+            # Retain native marker for diagnostics and downstream guardrails.
+            "line_type": "balanced",
+            "native_line_id": item.get("id"),
+        })
+    return out
+
+
+def _fetch_prizepicks_native(markets=None):
+    """
+    Pull PrizePicks projections and keep ONLY odds_type='standard'.
+
+    Goblin, demon, promo, flash-sale, and other alternate tiers are intentionally
+    excluded rather than guessed from the line value.
+    """
+    urls = [
+        "https://api.prizepicks.com/projections",
+        "https://partner-api.prizepicks.com/projections",
+    ]
+    params = {
+        "league_id": 9,       # NFL
+        "per_page": 1000,
+        "single_stat": "true",
+        "game_mode": "pickem",
+    }
+    headers = {
+        **_DIRECT_HEADERS,
+        "Referer": "https://app.prizepicks.com/",
+        "Origin": "https://app.prizepicks.com",
+    }
+
+    payload = None
+    last_error = None
+    for url in urls:
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            payload = resp.json()
+            if payload:
+                break
+        except Exception as exc:
+            last_error = exc
+
+    if not payload:
+        if last_error:
+            raise last_error
+        return []
+
+    included = payload.get("included") or []
+    players = {
+        str(x.get("id")): (x.get("attributes") or {})
+        for x in included
+        if x.get("type") in {"new_player", "player"}
+    }
+
+    allowed = set(markets or [])
+    out = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for proj in payload.get("data") or []:
+        attrs = proj.get("attributes") or {}
+        odds_type = str(attrs.get("odds_type") or "standard").lower()
+
+        # This is the exact native distinction we need.
+        if odds_type != "standard":
+            continue
+        if attrs.get("is_promo") is True:
+            continue
+        if attrs.get("flash_sale_line_score") not in (None, "", False):
+            continue
+        if str(attrs.get("status") or "pre_game").lower() not in {"pre_game", "active", "open"}:
+            continue
+
+        mk = _market_from_native(attrs.get("stat_type"))
+        if not mk or (allowed and mk not in allowed):
+            continue
+
+        rel = proj.get("relationships") or {}
+        pdata = ((rel.get("new_player") or rel.get("player") or {}).get("data") or {})
+        pinfo = players.get(str(pdata.get("id"))) or {}
+        name = (
+            pinfo.get("display_name")
+            or pinfo.get("name")
+            or attrs.get("name")
+        )
+        if not name:
+            continue
+
+        try:
+            line = float(attrs.get("line_score"))
+        except Exception:
+            continue
+
+        start = attrs.get("start_time")
+        updated = attrs.get("updated_at") or now_iso
+
+        out.append({
+            "event_id": str(
+                ((rel.get("game") or {}).get("data") or {}).get("id")
+                or proj.get("id")
+                or ""
+            ),
+            "canonical_event_id": str(
+                ((rel.get("game") or {}).get("data") or {}).get("id")
+                or proj.get("id")
+                or ""
+            ),
+            "sport_key": SPORT_KEY,
+            "commence_time": start,
+            "home_team": "",
+            "away_team": "",
+            "bookmaker": "prizepicks",
+            "source": "prizepicks",
+            "bookmaker_title": "PrizePicks",
+            "source_title": "PrizePicks",
+            "player_name": name,
+            "player": name,
+            "market_key": mk,
+            "market_label": attrs.get("stat_type") or mk,
+            "line": line,
+            # Standard PrizePicks is flat pick'em; keep price neutral.
+            "over_price": 100.0,
+            "under_price": -100.0,
+            "snapshot_time": updated,
+            "last_update": updated,
+            "age_seconds": 0,
+            "odds_type": "standard",
+            "is_promo": False,
+            "native_line_id": proj.get("id"),
+        })
+
+    return out
+
+
+def _fetch_parlay_non_dfs(markets=None):
     if not PARLAY_API_KEY:
         raise RuntimeError("PARLAY_API_KEY is not set")
+
+    # PrizePicks/Underdog are deliberately excluded here. Their native APIs
+    # expose authoritative standard/main markers that Parlay's flattened feed
+    # can lose, which is what caused alternate ladders to appear as main lines.
+    books = [b for b in BOOKMAKERS if b not in {"prizepicks", "underdog"}]
+    if not books:
+        return []
+
     rows, offset, limit = [], 0, 10000
     while True:
         r = requests.get(
             f"{PARLAY_BASE}/sports/{SPORT_KEY}/props",
             headers={"X-API-Key": PARLAY_API_KEY},
             params={
-                "bookmakers": ",".join(BOOKMAKERS),
+                "bookmakers": ",".join(books),
                 "markets": ",".join(markets) if markets else None,
                 "limit": limit,
                 "offset": offset,
@@ -67,16 +376,50 @@ def fetch_props(markets=None):
             timeout=45,
         )
         if not r.ok:
-            raise RuntimeError(f"ParlayAPI NFL props failed ({r.status_code}): {r.text[:500]}")
+            raise RuntimeError(
+                f"ParlayAPI NFL props failed ({r.status_code}): {r.text[:500]}"
+            )
         payload = r.json()
         batch = (
             payload.get("data") or payload.get("props") or payload.get("results") or []
-            if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+            if isinstance(payload, dict)
+            else payload if isinstance(payload, list) else []
         )
         rows.extend(batch)
         if len(batch) < limit:
             break
         offset += limit
+    return rows
+
+
+def fetch_props(markets=None):
+    """
+    NFL source strategy:
+      - Underdog: native board, line_type == balanced only.
+      - PrizePicks: native board, odds_type == standard only.
+      - Fliff/Kalshi/etc: ParlayAPI.
+
+    Accuracy wins over coverage. If a native DFS source is blocked/unavailable,
+    we omit that source for the refresh instead of falling back to Parlay rows
+    that may mix the lowest alternate ladder into the regular market.
+    """
+    rows = _fetch_parlay_non_dfs(markets=markets)
+    diagnostics = []
+
+    try:
+        rows.extend(_fetch_underdog_native(markets=markets))
+    except Exception as exc:
+        diagnostics.append(f"Underdog native feed unavailable: {exc}")
+
+    try:
+        rows.extend(_fetch_prizepicks_native(markets=markets))
+    except Exception as exc:
+        diagnostics.append(f"PrizePicks native feed unavailable: {exc}")
+
+    # Keep diagnostics invisible to the normal data path but available in logs.
+    if diagnostics:
+        print(" | ".join(diagnostics))
+
     return rows
 
 def _to_records(url):
