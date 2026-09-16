@@ -1,9 +1,10 @@
 """Runtime guardrails for NFL DFS primary projections.
 
-ParlayAPI exposes alternate NFL DFS ladders as distinct canonical markets using
-an `_alternate` suffix. The normal full-game market (for example
-`player_receptions`) is the primary projection. Do not infer the primary line
-from its price or from whether the line looks high/low.
+ParlayAPI's current /props contract gives us two authoritative signals for DFS
+rows: the projection type (`standard`/`demon`/`goblin`) and the prop period
+(`FULL`, `Q1`, `1H`, ...).  Legacy `UNKNOWN` rows are unsafe for Underdog: the
+API docs explicitly say older segmented projections were once stored under the
+unsuffixed full-game key, so those rows can look exactly like a primary line.
 """
 
 
@@ -26,27 +27,33 @@ def _is_primary_full_game(row):
     odds_type = str(row.get("odds_type") or "").strip().lower()
     projection_type = str(row.get("projection_type") or "").strip().lower()
 
-    # ParlayAPI's canonical NFL alternate ladders are separate *_alternate
-    # markets. These are never the standard Underdog board projection.
+    # Explicit alternate market families are never the primary projection.
     if market_key.endswith("_alternate") or "alternate" in market_label:
         return False
 
-    # Explicit DFS alternate tiers are never primary.
-    if odds_type in {"demon", "goblin", "alternate", "alt"}:
+    # The app's own DFS tag is authoritative when present.
+    if odds_type and odds_type != "standard":
         return False
-    if projection_type in {"demon", "goblin", "alternate", "alt"}:
+    if projection_type and projection_type != "standard":
         return False
 
-    # Confirmed segmented props are not full-game props. UNKNOWN/missing is
-    # allowed because legacy rows can lack retained segment metadata.
-    if period and period not in {"FULL", "UNKNOWN"}:
+    # Critical safety rule: only confirmed FULL rows may enter from the Parlay
+    # fallback. Parlay documents that legacy UNKNOWN rows can contain Q1/1H
+    # projections written under the unsuffixed full-game key. That is exactly
+    # capable of producing impossible-looking 0.5/1.5 reception lines.
+    if period != "FULL":
+        return False
+
+    # Current DFS rows should carry the source projection type. If neither alias
+    # exists, the row cannot be proven to be Underdog's standard board line.
+    if not odds_type and not projection_type:
         return False
 
     return True
 
 
 def install_primary_line_filter(updater_module):
-    """Wrap updater.fetch_props once so alternate Underdog markets never enter it."""
+    """Wrap updater.fetch_props once so only confirmed primary Underdog rows enter it."""
     current = updater_module.fetch_props
     if getattr(current, "_prop_lab_primary_filter", False):
         return
