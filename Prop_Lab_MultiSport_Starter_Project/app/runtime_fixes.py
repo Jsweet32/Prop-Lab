@@ -3,6 +3,7 @@
 These are intentionally isolated so MLB Underdog remains untouched while NFL
 Underdog is temporarily hidden until its native primary-line feed is reliable.
 """
+from datetime import datetime, timezone
 
 
 def apply_runtime_fixes():
@@ -87,12 +88,30 @@ def _repair_mlb_history_schema():
         c.close()
 
 
+def _parse_dt(value):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
 def _capture_current_mlb_snapshot():
-    """Seed tracking from the latest still-current modeled MLB snapshot."""
+    """Seed tracking only from recommendations whose games have not started."""
     try:
         from app.sports.mlb.db import latest_rows, latest_snapshot
         from app.sports.mlb.history import capture_actionable_props
-        capture_actionable_props(latest_rows(), latest_snapshot())
+
+        now = datetime.now(timezone.utc)
+        current = []
+        for row in latest_rows() or []:
+            start = _parse_dt(row.get("commence_time"))
+            if start is not None and start.astimezone(timezone.utc) > now:
+                current.append(row)
+        if current:
+            capture_actionable_props(current, latest_snapshot())
     except Exception as exc:
         # Keep startup available, but make the failure visible in Render logs.
         print(f"MLB performance capture startup warning: {exc}")
