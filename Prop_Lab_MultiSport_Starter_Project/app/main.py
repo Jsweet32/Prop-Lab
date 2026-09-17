@@ -15,6 +15,7 @@ from .sports.nfl.db import init_db as init_nfl_db
 from .sports.nfl.history import init_history_db as init_nfl_history_db
 from .sports.nfl.scheduler import start_scheduler as start_nfl_scheduler
 from .core.performance import global_performance_data
+from .runtime_fixes import apply_runtime_fixes
 
 app = FastAPI(
     title="Prop Lab",
@@ -39,9 +40,14 @@ def startup():
     init_mlb_db()
     init_kalshi_db()
     init_history_db()
-    _mlb_scheduler = start_mlb_scheduler()
     init_nfl_db()
     init_nfl_history_db()
+
+    # Apply production-safe source guardrails after databases exist but before
+    # schedulers begin refreshing either sport.
+    apply_runtime_fixes()
+
+    _mlb_scheduler = start_mlb_scheduler()
     _nfl_scheduler = start_nfl_scheduler()
 
 
