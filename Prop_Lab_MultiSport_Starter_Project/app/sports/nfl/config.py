@@ -9,16 +9,17 @@ DATABASE_PATH = os.getenv("NFL_DATABASE_PATH", "nfl_props.db")
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 
 SPORT_KEY = "americanfootball_nfl"
-BOOKMAKERS = ["prizepicks", "prizepicks_mobile", "underdog", "fliff", "kalshi"]
+# NFL Underdog is temporarily disabled until its native primary-line feed can
+# be verified against the app. MLB Underdog is completely unaffected.
+BOOKMAKERS = ["prizepicks", "prizepicks_mobile", "fliff", "kalshi"]
 BOOK_TITLES = {
     "prizepicks": "PrizePicks",
     "prizepicks_mobile": "PrizePicks",
-    "underdog": "Underdog",
     "fliff": "Fliff",
     "kalshi": "Kalshi",
 }
 
-DFS_BOOKS = {"PrizePicks", "Underdog"}
+DFS_BOOKS = {"PrizePicks"}
 LINE_MAX_AGE_SECONDS = int(os.getenv("NFL_LINE_MAX_AGE_SECONDS", "3600"))
 UPCOMING_HOURS = int(os.getenv("NFL_UPCOMING_HOURS", "168"))
 
